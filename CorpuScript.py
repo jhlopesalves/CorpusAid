@@ -19,9 +19,7 @@ from PySide6.QtGui import QIcon, QFont, QColor, QAction, QPainter, QIntValidator
 from bs4 import BeautifulSoup
 from collections import Counter
 from nltk.tokenize import word_tokenize
-from nltk.stem import WordNetLemmatizer
 from nltk.corpus import stopwords
-from nltk.stem.porter import PorterStemmer
 
 def resource_path(relative_path):
     try:
@@ -88,7 +86,6 @@ def ensure_nltk_data(parent):
     required_data = [
         'tokenizers/punkt',
         'corpora/stopwords',
-        'corpora/wordnet',
     ]
 
     downloader = NLTKDownloader(required_data)
@@ -166,14 +163,6 @@ class LowercaseModule(PreprocessingModule):
     def process(self, text):
         return text.lower()
 
-class LemmatizationModule(PreprocessingModule):
-    def __init__(self, pos='n'):
-        self.lemmatizer = WordNetLemmatizer()
-        self.pos = pos
-
-    def process(self, tokens):
-        return [self.lemmatizer.lemmatize(word, pos=self.pos) for word in tokens]
-
 class StopWordRemovalModule(PreprocessingModule):
     def __init__(self):
         self.stop_words = set(stopwords.words('english'))
@@ -188,13 +177,6 @@ class StopWordRemovalModule(PreprocessingModule):
         logging.debug(f"StopWordRemovalModule input (first 10 tokens): {tokens[:10]}")
         logging.debug(f"StopWordRemovalModule output (first 10 tokens): {result[:10]}")
         return result
-
-class StemmingModule(PreprocessingModule):
-    def __init__(self):
-        self.stemmer = PorterStemmer()
-
-    def process(self, tokens):
-        return [self.stemmer.stem(word) for word in tokens]
 
 class RegexFilterModule(PreprocessingModule):
     def __init__(self, pattern, replacement=''):
@@ -241,13 +223,13 @@ class PreprocessingPipeline:
 
     def process(self, text):
         logging.debug(f"Starting preprocessing pipeline with text: {text[:100]}...")
-        requires_tokenization = any(isinstance(module, (LemmatizationModule, StopWordRemovalModule, StemmingModule)) for module in self.modules)
+        requires_tokenization = any(isinstance(module, StopWordRemovalModule) for module in self.modules)
 
         if requires_tokenization:
             tokens = word_tokenize(text)
             for module in self.modules:
                 logging.debug(f"Applying module: {module.__class__.__name__}")
-                if isinstance(module, (LemmatizationModule, StopWordRemovalModule, StemmingModule)):
+                if isinstance(module, StopWordRemovalModule):
                     tokens = module.process(tokens)
                 else:
                     text = module.process(text)
@@ -269,8 +251,6 @@ class DocumentProcessor:
             "remove_break_lines": False,
             "lowercase": False,
             "chars_to_remove": [],
-            "use_lemmatization": False,
-            "use_stemming": False,
             "remove_stop_words": False,
             "regex_pattern": "",
             "strip_html": False,
@@ -304,10 +284,6 @@ class DocumentProcessor:
             self.pipeline.add_module(LowercaseModule())
         if self.parameters["chars_to_remove"]:
             self.pipeline.add_module(CharacterFilterModule(self.parameters["chars_to_remove"]))
-        if self.parameters["use_lemmatization"]:
-            self.pipeline.add_module(LemmatizationModule())
-        if self.parameters["use_stemming"]:
-            self.pipeline.add_module(StemmingModule())
         if self.parameters["remove_stop_words"]:
             self.pipeline.add_module(StopWordRemovalModule())
         if self.parameters["remove_diacritics"]:
@@ -825,8 +801,6 @@ class ParametersDialog(QDialog):
             ("strip_html", "Strip HTML tags"),
             ("remove_diacritics", "Diacritic Removal"),
             ("normalize_spacing", "Normalize Spacing"),
-            ("use_lemmatization", "Use lemmatization"),
-            ("use_stemming", "Use Stemming"),
             ("remove_stop_words", "Remove Stop Words"),
             ("remove_greek", "Remove Greek letters"),
             ("remove_cyrillic", "Remove Cyrillic script"),
