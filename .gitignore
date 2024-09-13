@@ -141,3 +141,6 @@ bin/
 lib/
 include/
 Nuitka/
+
+#hooks
+hook-corpuscript.py
