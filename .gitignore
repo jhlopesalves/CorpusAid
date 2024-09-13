@@ -30,8 +30,6 @@ CorpuScript.build/
 CorpuScript.dist/
 setup/
 
-
-
 # PyInstaller
 *.manifest
 *.spec
