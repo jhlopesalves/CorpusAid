@@ -1,8 +1,8 @@
-## What is CorpuScript?
+# What is CorpuScript?
 
 CorpuScript is an advanced, user-friendly software tool designed specifically for preprocessing files in corpora compilation. This powerful application stands out for its ability to apply both personalized and traditional cleaning parameters across an entire corpus, regardless of its size. Whether you're working with a small collection of 10 files or a massive dataset of 10,000 documents, CorpuScript ensures consistent and accurate preprocessing.
 
-### Key features of CorpuScript include
+## Key features of CorpuScript include
 
 1. **Customizable preprocessing parameters**: Tailor the cleaning process to your specific research needs.
 2. **Batch processing**: Apply selected parameters to all files in your corpus simultaneously.
