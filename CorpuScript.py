@@ -6,14 +6,13 @@ import logging
 import time
 import random
 import multiprocessing
-import ssl
 from PySide6.QtWidgets import (QApplication, QMainWindow, QVBoxLayout, QHBoxLayout, QWidget, QPushButton,
                                QTextEdit, QProgressBar, QFileDialog, QLabel, QListWidget,
                                QTabWidget, QLineEdit, QDialog, QDialogButtonBox, QCheckBox, QMessageBox,
                                QScrollArea, QSplitter, QToolBar, QStatusBar, QListWidgetItem,
                                QPlainTextEdit, QWizard, QWizardPage, QTableWidget, QComboBox)
-from PySide6.QtCore import Qt, Signal, QObject, QThread, QSize, QRunnable, QThreadPool, QUrl
-from PySide6.QtGui import QIcon, QFont, QColor, QAction, QPainter, QIntValidator, QTextOption, QDesktopServices
+from PySide6.QtCore import Qt, Signal, QObject, QThread, QSize, QRunnable, QThreadPool
+from PySide6.QtGui import QIcon, QFont, QColor, QAction, QPainter, QIntValidator, QTextOption, QTextCursor, QTextCharFormat
 from bs4 import BeautifulSoup
 from collections import Counter
 
@@ -566,16 +565,16 @@ class AdvancedPatternBuilder(QWizard):
         text = self.test_input.toPlainText()
         matches = list(self.final_pattern.finditer(text))
         cursor = self.test_input.textCursor()
-        format = self.test_input.currentCharFormat()
-        format.setBackground(Qt.yellow)
+        text_format = QTextCharFormat()
+        text_format.setBackground(Qt.yellow)
         cursor.beginEditBlock()
-        cursor.select(QTextEdit.document)
-        cursor.setCharFormat(QTextEdit.CharFormat())
+        cursor.select(QTextCursor.Document)
+        cursor.setCharFormat(QTextCharFormat())
         cursor.clearSelection()
         for match in matches:
             cursor.setPosition(match.start())
-            cursor.setPosition(match.end(), QTextEdit.KeepAnchor)
-            cursor.setCharFormat(format)
+            cursor.setPosition(match.end(), QTextCursor.KeepAnchor)
+            cursor.setCharFormat(text_format)
         cursor.endEditBlock()
         if not matches:
             QMessageBox.warning(self, "No Matches", "The pattern did not match any text in the sample.")
@@ -1132,8 +1131,9 @@ class PreprocessorGUI(QMainWindow):
 
     def show_documentation(self):
         if self.documentation_window is None:
+            readme_file = resource_path("README.md")
             try:
-                with open(resource_path("README.md"), "r", encoding="utf-8") as f:
+                with open(readme_file, "r", encoding="utf-8") as f:
                     readme_content = f.read()
                 self.documentation_window = QTextEdit()
                 self.documentation_window.setWindowTitle("Documentation")
@@ -1144,7 +1144,10 @@ class PreprocessorGUI(QMainWindow):
                 self.documentation_window.setReadOnly(True)
                 self.documentation_window.setWordWrapMode(QTextOption.WordWrap)
             except FileNotFoundError:
-                QMessageBox.warning(self, "Documentation Not Found", "The README.md file could not be found.")
+                QMessageBox.warning(self, "Documentation Not Found", f"The README.md file could not be found: {readme_file}")
+                return
+            except Exception as e:
+                QMessageBox.warning(self, "Error", f"An error occurred while reading the documentation: {str(e)}")
                 return
         self.documentation_window.show()
 
