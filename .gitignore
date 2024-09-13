@@ -28,6 +28,8 @@ wheels/
 *.egg
 CorpuScript.build/
 CorpuScript.dist/
+setup/
+
 
 
 # PyInstaller
