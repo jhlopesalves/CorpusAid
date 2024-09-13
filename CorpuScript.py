@@ -23,13 +23,6 @@ def resource_path(relative_path):
         base_path = os.path.abspath(".")
     return os.path.join(base_path, relative_path)
 
-def get_version():
-    try:
-        with open(resource_path("version.txt"), "r") as f:
-            return f.read().strip()
-    except:
-        return "0.2"
-
 def ensure_nltk_data():
     required_data = [
         'tokenizers/punkt',
@@ -823,7 +816,6 @@ class PreprocessorGUI(QMainWindow):
         self.processed_size = 0
         self.documentation_window = None
         self.report_thread = QThread()
-        self.version = get_version()
         self.init_ui()
         ensure_nltk_data()
         # self.check_for_updates()
