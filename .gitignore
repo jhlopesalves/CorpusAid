@@ -26,6 +26,9 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+CorpuScript.build/
+CorpuScript.dist/
+
 
 # PyInstaller
 *.manifest

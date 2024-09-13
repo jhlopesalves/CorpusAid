@@ -1196,6 +1196,7 @@ class PreprocessorGUI(QMainWindow):
 
 def main():
     app = QApplication(sys.argv)
+    app.setWindowIcon(QIcon("my_icon.ico"))  
     window = PreprocessorGUI()
     window.show()
     sys.exit(app.exec())
