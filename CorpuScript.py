@@ -7,19 +7,15 @@ import time
 import random
 import multiprocessing
 import ssl
-import nltk
-import requests
 from PySide6.QtWidgets import (QApplication, QMainWindow, QVBoxLayout, QHBoxLayout, QWidget, QPushButton,
                                QTextEdit, QProgressBar, QFileDialog, QLabel, QListWidget,
                                QTabWidget, QLineEdit, QDialog, QDialogButtonBox, QCheckBox, QMessageBox,
                                QScrollArea, QSplitter, QToolBar, QStatusBar, QListWidgetItem,
-                               QPlainTextEdit, QWizard, QWizardPage, QTableWidget, QComboBox, QProgressDialog)
+                               QPlainTextEdit, QWizard, QWizardPage, QTableWidget, QComboBox)
 from PySide6.QtCore import Qt, Signal, QObject, QThread, QSize, QRunnable, QThreadPool, QUrl
 from PySide6.QtGui import QIcon, QFont, QColor, QAction, QPainter, QIntValidator, QTextOption, QDesktopServices
 from bs4 import BeautifulSoup
 from collections import Counter
-from nltk.tokenize import word_tokenize
-from nltk.corpus import stopwords
 
 def resource_path(relative_path):
     try:
@@ -35,95 +31,18 @@ def get_version():
     except:
         return "0.2"
 
-class NLTKDownloader(QThread):
-    progress = Signal(str, int)
-    error = Signal(str)
-    finished = Signal()
-
-    def __init__(self, required_data):
-        super().__init__()
-        self.required_data = required_data
-        self.total_items = len(required_data)
-        self.current_item = 0
-
-    def run(self):
-        try:
-            _create_unverified_https_context = ssl._create_unverified_context
-        except AttributeError:
-            pass
-        else:
-            ssl._create_default_https_context = _create_unverified_https_context
-
-        for item in self.required_data:
-            try:
-                self.current_item += 1
-                self.progress.emit(f"Checking {item}...", int((self.current_item / self.total_items) * 100))
-                nltk.data.find(item)
-            except LookupError:
-                self.progress.emit(f"Downloading {item}...", int((self.current_item / self.total_items) * 100))
-                try:
-                    nltk.download(item.split('/')[-1], quiet=True)
-                except Exception as e:
-                    self.error.emit(f"Failed to download {item}: {str(e)}")
-                    return
-        self.finished.emit()
-
-class DownloadDialog(QProgressDialog):
-    def __init__(self, parent=None):
-        super().__init__("Preparing NLTK data...", "Cancel", 0, 100, parent)
-        self.setWindowModality(Qt.WindowModal)
-        self.setWindowTitle("First-time Setup")
-        self.setMinimumDuration(0)
-        self.setMinimumWidth(400)
-        self.setAutoClose(False)
-        self.setCancelButton(None)
-
-    def update_progress(self, message, value):
-        self.setLabelText(message)
-        self.setValue(value)
-
-def ensure_nltk_data(parent):
+def ensure_nltk_data():
     required_data = [
         'tokenizers/punkt',
         'corpora/stopwords',
     ]
-
-    downloader = NLTKDownloader(required_data)
-    dialog = DownloadDialog(parent)
-
-    def update_progress(message, value):
-        dialog.update_progress(message, value)
-
-    def handle_error(message):
-        QMessageBox.critical(parent, "Download Error", message)
-        dialog.close()
-
-    def download_finished():
-        dialog.close()
-
-    downloader.progress.connect(update_progress)
-    downloader.error.connect(handle_error)
-    downloader.finished.connect(download_finished)
-
-    downloader.start()
-    dialog.exec()
-
-class UpdateChecker(QThread):
-    update_available = Signal(str)
-    error = Signal(str)
-
-    def __init__(self, current_version):
-        super().__init__()
-        self.current_version = current_version
-
-    def run(self):
+    for item in required_data:
         try:
-            response = requests.get("https://api.github.com/repos/YourUsername/CorpuScript/releases/latest")
-            latest_version = response.json()["tag_name"]
-            if latest_version > self.current_version:
-                self.update_available.emit(latest_version)
-        except Exception as e:
-            self.error.emit(str(e))
+            import nltk
+            nltk.data.find(item)
+        except (LookupError, ImportError):
+            import nltk
+            nltk.download(item.split('/')[-1])
 
 class PreprocessingModule:
     def process(self, text):
@@ -132,7 +51,6 @@ class PreprocessingModule:
 class CharacterFilterModule(PreprocessingModule):
     def __init__(self, chars_to_remove):
         self.chars_to_remove = sorted(chars_to_remove, key=len, reverse=True)
-
     def process(self, text):
         for item in self.chars_to_remove:
             text = text.replace(item, '')
@@ -165,32 +83,24 @@ class LowercaseModule(PreprocessingModule):
 
 class StopWordRemovalModule(PreprocessingModule):
     def __init__(self):
+        from nltk.corpus import stopwords
         self.stop_words = set(stopwords.words('english'))
-
     def process(self, text):
-        logging.debug(f"Input type to StopWordRemovalModule: {type(text)}")
         if isinstance(text, str):
             tokens = text.split()
         else:
             tokens = text
         result = [word for word in tokens if word.lower() not in self.stop_words]
-        logging.debug(f"StopWordRemovalModule input (first 10 tokens): {tokens[:10]}")
-        logging.debug(f"StopWordRemovalModule output (first 10 tokens): {result[:10]}")
         return result
 
 class RegexFilterModule(PreprocessingModule):
     def __init__(self, pattern, replacement=''):
         self.pattern = re.compile(pattern) if pattern else None
         self.replacement = replacement
-
     def process(self, text):
         if self.pattern:
-            logging.debug(f"RegexFilterModule: Applying pattern: {self.pattern.pattern}")
-            logging.debug(f"RegexFilterModule: Text before (first 100 chars): {text[:100]}")
             result = self.pattern.sub(self.replacement, text)
-            logging.debug(f"RegexFilterModule: Text after (first 100 chars): {result[:100]}")
             return result
-        logging.debug("RegexFilterModule: No pattern to apply")
         return text
 
 class HTMLStripperModule(PreprocessingModule):
@@ -217,18 +127,14 @@ class SuperSubScriptRemovalModule(PreprocessingModule):
 class PreprocessingPipeline:
     def __init__(self):
         self.modules = []
-
     def add_module(self, module):
         self.modules.append(module)
-
     def process(self, text):
-        logging.debug(f"Starting preprocessing pipeline with text: {text[:100]}...")
         requires_tokenization = any(isinstance(module, StopWordRemovalModule) for module in self.modules)
-
         if requires_tokenization:
+            from nltk.tokenize import word_tokenize
             tokens = word_tokenize(text)
             for module in self.modules:
-                logging.debug(f"Applying module: {module.__class__.__name__}")
                 if isinstance(module, StopWordRemovalModule):
                     tokens = module.process(tokens)
                 else:
@@ -237,11 +143,8 @@ class PreprocessingPipeline:
             result = ' '.join(tokens)
         else:
             for module in self.modules:
-                logging.debug(f"Applying module: {module.__class__.__name__}")
                 text = module.process(text)
             result = text
-
-        logging.debug(f"Preprocessing pipeline finished. Result: {result[:100]}...")
         return result.strip()
 
 class DocumentProcessor:
@@ -261,7 +164,6 @@ class DocumentProcessor:
             "normalize_spacing": False,
             "pattern_data": []
         }
-
     def set_parameters(self, parameters):
         try:
             if "regex_pattern" in parameters:
@@ -269,11 +171,9 @@ class DocumentProcessor:
             self.parameters.update(parameters)
             self.update_pipeline()
         except re.error:
-            logging.error("Invalid regex pattern provided.")
-
+            pass
     def update_pipeline(self):
         self.pipeline = PreprocessingPipeline()
-        logging.debug("Updating preprocessing pipeline")
         if self.parameters["regex_pattern"]:
             self.pipeline.add_module(RegexFilterModule(self.parameters["regex_pattern"]))
         if self.parameters["strip_html"]:
@@ -296,20 +196,13 @@ class DocumentProcessor:
             self.pipeline.add_module(SuperSubScriptRemovalModule())
         if self.parameters["normalize_spacing"]:
             self.pipeline.add_module(WhitespaceNormalizationModule())
-        logging.debug(f"Pipeline modules: {[type(module).__name__ for module in self.pipeline.modules]}")
-
     def get_parameters(self):
         return self.parameters
-
     def process_file(self, text):
-        logging.debug(f"DocumentProcessor: Starting processing. Original text (first 100 chars): {text[:100]}")
         for module in self.pipeline.modules:
-            logging.debug(f"DocumentProcessor: Applying {module.__class__.__name__}")
             text = module.process(text)
             if isinstance(text, list):
-                logging.debug(f"DocumentProcessor: Output is a list. First 10 elements: {text[:10]}")
                 text = ' '.join(text)
-            logging.debug(f"DocumentProcessor: Text after {module.__class__.__name__} (first 100 chars): {text[:100]}")
         return text
 
 class ProcessingWorker(QRunnable):
@@ -319,7 +212,6 @@ class ProcessingWorker(QRunnable):
         self.file_path = file_path
         self.signals = signals
         self.setAutoDelete(True)
-
     def run(self):
         try:
             file_size = os.path.getsize(self.file_path)
@@ -331,7 +223,6 @@ class ProcessingWorker(QRunnable):
             processing_time = end_time - start_time
             self.signals.result.emit(self.file_path, processed_text, file_size, processing_time)
         except Exception as e:
-            logging.error(f"Error processing file {self.file_path}: {str(e)}")
             self.signals.error.emit(self.file_path, str(e))
         finally:
             self.signals.finished.emit()
@@ -348,12 +239,10 @@ class ProcessingSignals(QObject):
 class FileManager:
     def __init__(self):
         self.files = []
-
     def add_files(self, file_paths):
         new_files = [os.path.normpath(f) for f in file_paths if os.path.normpath(f) not in self.files]
         self.files.extend(new_files)
         return new_files
-
     def add_directory(self, directory, signals):
         new_files = []
         total_files = 0
@@ -378,44 +267,36 @@ class FileManager:
                         except Exception as e:
                             signals.update_progress.emit(processed_files, total_files, 0, str(e))
         return new_files
-
     def remove_files(self, file_paths):
         for file in file_paths:
             if file in self.files:
                 self.files.remove(file)
-
     def clear_files(self):
         self.files.clear()
-
     def get_files(self):
         return self.files
-
     def get_total_size(self):
         return sum(os.path.getsize(file) for file in self.files)
 
 class FileListWidget(QListWidget):
     files_added = Signal(list)
     files_removed = Signal(list)
-
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setAcceptDrops(True)
         self.setSelectionMode(QListWidget.ExtendedSelection)
         self.setDragDropMode(QListWidget.InternalMove)
-
     def dragEnterEvent(self, event):
         if event.mimeData().hasUrls():
             event.acceptProposedAction()
         else:
             super().dragEnterEvent(event)
-
     def dragMoveEvent(self, event):
         if event.mimeData().hasUrls():
             event.setDropAction(Qt.CopyAction)
             event.accept()
         else:
             super().dragMoveEvent(event)
-
     def dropEvent(self, event):
         if event.mimeData().hasUrls():
             event.setDropAction(Qt.CopyAction)
@@ -433,7 +314,6 @@ class FileListWidget(QListWidget):
             if source_row != destination_row:
                 item = self.takeItem(source_row)
                 self.insertItem(destination_row, item)
-
     def keyPressEvent(self, event):
         if event.key() == Qt.Key_Delete:
             selected_items = self.selectedItems()
@@ -455,16 +335,13 @@ class ThemeManager:
             "icon_dark": "#FFFFFF",
             "icon_light": "#000000"
         }
-
     def toggle_theme(self):
         self.dark_theme = not self.dark_theme
-
     def get_stylesheet(self):
         if self.dark_theme:
             return self._get_dark_stylesheet()
         else:
             return self._get_light_stylesheet()
-
     def _get_dark_stylesheet(self):
         return f"""
             QMainWindow, QWidget {{
@@ -513,7 +390,6 @@ class ThemeManager:
                 background: {self.custom_colors['primary']};
             }}
         """
-
     def _get_light_stylesheet(self):
         return f"""
             QMainWindow, QWidget {{
@@ -564,7 +440,6 @@ class ThemeManager:
                 color: #FFFFFF;
             }}
         """
-
     def update_color(self, color_key, color_value):
         if color_key in self.custom_colors:
             self.custom_colors[color_key] = color_value
@@ -574,10 +449,9 @@ class AdvancedPatternBuilder(QWizard):
         super().__init__(parent)
         self.setWindowTitle("Advanced Pattern Builder")
         self.setWizardStyle(QWizard.ModernStyle)
-        self.setWindowIcon(QIcon(resource_path("my_icon.ico")))
+        self.setMinimumSize(700, 500)
         self.addPage(self.createPatternPage())
         self.addPage(self.createPreviewPage())
-        self.setMinimumSize(700, 500)
 
     def createPatternPage(self):
         page = QWizardPage()
@@ -587,11 +461,6 @@ class AdvancedPatternBuilder(QWizard):
         self.pattern_table.setColumnCount(4)
         self.pattern_table.setHorizontalHeaderLabels(["Start Condition", "End Condition Type", "End Condition", "Number Length"])
         layout.addWidget(self.pattern_table)
-        self.pattern_table.setColumnWidth(0, 150)
-        self.pattern_table.setColumnWidth(1, 150)
-        self.pattern_table.setColumnWidth(2, 150)
-        self.pattern_table.setColumnWidth(3, 120)
-        self.pattern_table.resizeColumnsToContents()
         add_button = QPushButton("Add Pattern")
         add_button.clicked.connect(self.addPattern)
         layout.addWidget(add_button)
@@ -715,78 +584,11 @@ class AdvancedPatternBuilder(QWizard):
         self.updatePattern()
         return self.final_pattern
 
-def open_pattern_builder(parent=None):
-    dialog = AdvancedPatternBuilder(parent)
-    if dialog.exec():
-        return dialog.getPattern()
-    return None
-
-class CharacterSelectionDialog(QDialog):
-    def __init__(self, current_chars, parent=None):
-        super().__init__(parent)
-        self.setWindowTitle("Select Characters to Remove")
-        self.setMinimumSize(400, 300)
-        self.setWindowIcon(QIcon(resource_path("my_icon.ico")))
-        layout = QVBoxLayout(self)
-        self.selected_chars = list(current_chars)
-        input_layout = QHBoxLayout()
-        self.char_input = QLineEdit()
-        self.char_input.setPlaceholderText("Enter characters or sequences to remove")
-        input_layout.addWidget(self.char_input)
-        include_button = QPushButton("Include")
-        include_button.clicked.connect(self.add_chars)
-        input_layout.addWidget(include_button)
-        layout.addLayout(input_layout)
-        self.char_list = QListWidget()
-        self.update_char_list()
-        layout.addWidget(QLabel("Items to remove:"))
-        layout.addWidget(self.char_list)
-        delete_button = QPushButton("Delete Selected")
-        delete_button.clicked.connect(self.delete_selected)
-        layout.addWidget(delete_button)
-        button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-        button_box.accepted.connect(self.accept)
-        button_box.rejected.connect(self.reject)
-        layout.addWidget(button_box)
-        self.char_input.returnPressed.connect(self.add_chars)
-
-    def add_chars(self):
-        new_item = self.char_input.text().strip()
-        if new_item and new_item not in self.selected_chars:
-            self.selected_chars.append(new_item)
-            self.update_char_list()
-        self.char_input.clear()
-
-    def update_char_list(self):
-        self.char_list.clear()
-        for item in self.selected_chars:
-            list_item = QListWidgetItem(item)
-            if len(item) == 1:
-                list_item.setForeground(QColor(0, 200, 0))
-            else:
-                list_item.setForeground(QColor(0, 120, 215))
-            self.char_list.addItem(list_item)
-
-    def delete_selected(self):
-        for item in self.char_list.selectedItems():
-            self.selected_chars.remove(item.text())
-        self.update_char_list()
-
-    def get_selected_chars(self):
-        return self.selected_chars
-
-    def keyPressEvent(self, event):
-        if event.key() == Qt.Key_Return or event.key() == Qt.Key_Enter:
-            self.add_chars()
-        else:
-            super().keyPressEvent(event)
-
 class ParametersDialog(QDialog):
     def __init__(self, current_parameters, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Processing Parameters")
         self.setMinimumWidth(400)
-        self.setWindowIcon(QIcon(resource_path("my_icon.ico")))
         layout = QVBoxLayout(self)
         self.parameters = current_parameters.copy()
         self.pattern_data = self.parameters.get("pattern_data", [])
@@ -828,7 +630,6 @@ class ParametersDialog(QDialog):
         layout.addWidget(buttons)
 
     def open_regex_dialog(self):
-        pattern = None
         dialog = AdvancedPatternBuilder(self)
         if self.pattern_data:
             for row_data in self.pattern_data:
@@ -844,11 +645,9 @@ class ParametersDialog(QDialog):
                 try:
                     re.compile(pattern.pattern)
                     self.parameters["regex_pattern"] = pattern.pattern
-                    logging.debug(f"ParametersDialog: New regex pattern set: {pattern.pattern}")
                     self.regex_label.setText("Current pattern: " + pattern.pattern)
                     self.pattern_data = dialog.getPatternData()
                     self.parameters["pattern_data"] = self.pattern_data
-                    logging.debug(f"ParametersDialog: New pattern data: {self.pattern_data}")
                 except re.error:
                     QMessageBox.warning(self, "Invalid Pattern", "The entered pattern is invalid.")
 
@@ -861,12 +660,60 @@ class ParametersDialog(QDialog):
     def get_parameters(self):
         return self.parameters
 
+class CharacterSelectionDialog(QDialog):
+    def __init__(self, current_chars, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Select Characters to Remove")
+        self.setMinimumSize(400, 300)
+        layout = QVBoxLayout(self)
+        self.selected_chars = list(current_chars)
+        input_layout = QHBoxLayout()
+        self.char_input = QLineEdit()
+        self.char_input.setPlaceholderText("Enter characters or sequences to remove")
+        input_layout.addWidget(self.char_input)
+        include_button = QPushButton("Include")
+        include_button.clicked.connect(self.add_chars)
+        input_layout.addWidget(include_button)
+        layout.addLayout(input_layout)
+        self.char_list = QListWidget()
+        self.update_char_list()
+        layout.addWidget(QLabel("Items to remove:"))
+        layout.addWidget(self.char_list)
+        delete_button = QPushButton("Delete Selected")
+        delete_button.clicked.connect(self.delete_selected)
+        layout.addWidget(delete_button)
+        button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        button_box.accepted.connect(self.accept)
+        button_box.rejected.connect(self.reject)
+        layout.addWidget(button_box)
+        self.char_input.returnPressed.connect(self.add_chars)
+
+    def add_chars(self):
+        new_item = self.char_input.text().strip()
+        if new_item and new_item not in self.selected_chars:
+            self.selected_chars.append(new_item)
+            self.update_char_list()
+        self.char_input.clear()
+
+    def update_char_list(self):
+        self.char_list.clear()
+        for item in self.selected_chars:
+            list_item = QListWidgetItem(item)
+            self.char_list.addItem(list_item)
+
+    def delete_selected(self):
+        for item in self.char_list.selectedItems():
+            self.selected_chars.remove(item.text())
+        self.update_char_list()
+
+    def get_selected_chars(self):
+        return self.selected_chars
+
 class FileLoadingDialog(QDialog):
     def __init__(self, parent=None, title="Loading Files..."):
         super().__init__(parent)
         self.setWindowTitle(title)
         self.setModal(True)
-        self.setWindowIcon(QIcon(resource_path("my_icon.ico")))
         layout = QVBoxLayout(self)
         self.progress_bar = QProgressBar()
         self.progress_bar.setRange(0, 0)
@@ -896,7 +743,6 @@ class FileLoadingDialog(QDialog):
 
 class DirectoryLoadingWorker(QObject):
     finished = Signal(list)
-
     def __init__(self, file_manager, directory, signals):
         super().__init__()
         self.file_manager = file_manager
@@ -909,7 +755,6 @@ class DirectoryLoadingWorker(QObject):
 
 class ReportWorker(QObject):
     finished = Signal(str, str)
-
     def __init__(self, files, processed=False, processed_results=None):
         super().__init__()
         self.files = files
@@ -939,13 +784,13 @@ class ReportWorker(QObject):
         avg_sentences = total_sentences / len(self.files) if self.files else 0
         total_size_mb = total_size / (1024 * 1024)
         avg_size_mb = total_size_mb / len(self.files) if self.files else 0
-        files_report = f"<h3 style='color: #518FBC;'>{'Processed ' if self.processed else ''}Files Report</h3>"
+        files_report = f"<h3>{'Processed ' if self.processed else ''}Files Report</h3>"
         files_report += f"<p><b>Total Files:</b> {len(self.files)}</p>"
         files_report += f"<p><b>Total Size:</b> {total_size_mb:.2f} MB</p>"
         files_report += f"<p><b>Average Size per File:</b> {avg_size_mb:.2f} MB</p>"
         files_report += f"<p><b>Earliest File Modification:</b> {time.ctime(min(os.path.getmtime(file) for file in self.files))}</p>"
         files_report += f"<p><b>Latest File Modification:</b> {time.ctime(max(os.path.getmtime(file) for file in self.files))}</p>"
-        corpus_report = f"<h3 style='color: #518FBC;'>{'Processed ' if self.processed else ''}Corpus Report</h3>"
+        corpus_report = f"<h3>{'Processed ' if self.processed else ''}Corpus Report</h3>"
         corpus_report += f"<p><b>Word Count:</b> {total_words}</p>"
         corpus_report += f"<p><b>Average Word Count per File:</b> {avg_words:.2f}</p>"
         corpus_report += f"<p><b>Sentences Count:</b> {total_sentences}</p>"
@@ -981,8 +826,8 @@ class PreprocessorGUI(QMainWindow):
         self.report_thread = QThread()
         self.version = get_version()
         self.init_ui()
-        ensure_nltk_data(self)
-        self.check_for_updates()
+        ensure_nltk_data()
+        # self.check_for_updates()
 
     def init_ui(self):
         self.setWindowTitle('CorpuScript')
@@ -1019,7 +864,7 @@ class PreprocessorGUI(QMainWindow):
         help_menu = menu_bar.addMenu("&Help")
         help_menu.addAction(self.create_action("About", "help-about", "", "About this application", self.show_about_dialog))
         help_menu.addAction(self.create_action("Documentation", "help-contents", "F1", "View documentation", self.show_documentation))
-        help_menu.addAction(self.create_action("Check for Updates", "system-software-update", "", "Check for updates", self.check_for_updates))
+        # help_menu.addAction(self.create_action("Check for Updates", "system-software-update", "", "Check for updates", self.check_for_updates))
 
     def create_toolbar(self):
         self.toolbar = QToolBar()
@@ -1341,18 +1186,18 @@ class PreprocessorGUI(QMainWindow):
         self.files_report_text.setHtml(files_report)
         self.corpus_report_text.setHtml(corpus_report)
 
-    def check_for_updates(self):
-        self.update_checker = UpdateChecker(self.version)
-        self.update_checker.update_available.connect(self.show_update_dialog)
-        self.update_checker.error.connect(lambda e: logging.error(f"Update check failed: {e}"))
-        self.update_checker.start()
+    # def check_for_updates(self):
+    #     self.update_checker = UpdateChecker(self.version)
+    #     self.update_checker.update_available.connect(self.show_update_dialog)
+    #     self.update_checker.error.connect(lambda e: logging.error(f"Update check failed: {e}"))
+    #     self.update_checker.start()
 
-    def show_update_dialog(self, latest_version):
-        reply = QMessageBox.question(self, "Update Available",
-                                     f"A new version ({latest_version}) is available. Would you like to download it?",
-                                     QMessageBox.Yes | QMessageBox.No)
-        if reply == QMessageBox.Yes:
-            QDesktopServices.openUrl(QUrl("https://github.com/YourUsername/CorpuScript/releases/latest"))
+    # def show_update_dialog(self, latest_version):
+    #     reply = QMessageBox.question(self, "Update Available",
+    #                                 f"A new version ({latest_version}) is available. Would you like to download it?",
+    #                                 QMessageBox.Yes | QMessageBox.No)
+    #     if reply == QMessageBox.Yes:
+    #         QDesktopServices.openUrl(QUrl("https://github.com/YourUsername/CorpuScript/releases/latest"))
 
 def main():
     app = QApplication(sys.argv)

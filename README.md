@@ -2,7 +2,7 @@
 
 CorpuScript is an advanced, user-friendly software tool designed specifically for preprocessing files in corpora compilation. This powerful application stands out for its ability to apply both personalized and traditional cleaning parameters across an entire corpus, regardless of its size. Whether you're working with a small collection of 10 files or a massive dataset of 10,000 documents, CorpuScript ensures consistent and accurate preprocessing.
 
-### Key features of CorpuScript include:
+### Key features of CorpuScript include
 
 1. **Customizable preprocessing parameters**: Tailor the cleaning process to your specific research needs.
 2. **Batch processing**: Apply selected parameters to all files in your corpus simultaneously.
@@ -42,11 +42,13 @@ CorpuScript offers a robust set of features designed to streamline and enhance t
 CorpuScript provides a rich array of text cleaning options, giving users fine-grained control over their preprocessing tasks:
 
 #### Text Normalization
+
 - **Lowercase Conversion:** Standardizes text by converting all characters to lowercase, ensuring consistency in text analysis.
 - **Whitespace Normalization:** Ensures uniform spacing throughout the text by removing redundant spaces, tabs, and other whitespace characters.
 - **Line Break Removal:** Merges multiple lines to create continuous text, useful for certain types of analysis that require unbroken text streams.
 
 #### Character and Symbol Management
+
 - **Punctuation Removal:** Strips away punctuation marks to focus on core textual content.
 - **Number Removal:** Eliminates numerical digits when they're not relevant to the analysis.
 - **Special Characters Removal:** Removes symbols and characters that may interfere with text processing algorithms.
@@ -54,27 +56,33 @@ CorpuScript provides a rich array of text cleaning options, giving users fine-gr
 - **Greek and Cyrillic Character Removal:** Selectively filters out specific scripts as required by the research parameters.
 
 #### Content Extraction and Cleaning
+
 - **HTML Tag Stripping:** Removes HTML tags to extract plain text content from web-scraped or marked-up documents.
 - **Custom Regular Expression Filtering:** Allows users to define and apply custom patterns for advanced text filtering and extraction.
 
 #### Linguistic Processing
+
 - **Lemmatization:** Reduces words to their base forms (lemmas) to facilitate more accurate linguistic analysis.
 - **Tokenization:** Splits text into individual words or tokens, a fundamental step for many NLP tasks.
 - **Stop Word Removal:** Excludes common, non-informative words (e.g., "the", "and") to focus on meaningful content.
 
 ### 2. Batch Processing
+
 - Process entire directories of text files simultaneously, regardless of the number of files.
 - Apply consistent preprocessing across large corpora, ensuring uniformity in your dataset.
 - Dramatically reduce processing time compared to manual or file-by-file approaches.
 
 ### 3. Intuitive Graphical User Interface (GUI)
+
 - User-friendly interface designed for researchers of all technical levels.
 - Easy-to-navigate controls for selecting and applying preprocessing parameters.
 - Real-time preview feature to see the effects of selected parameters on sample text.
 - Progress indicators for tracking batch processing operations.
 
 ### 4. Detailed Summary Reporting
+
 After processing, CorpuScript generates a comprehensive summary report that provides invaluable insights into your corpus:
+
 - Word frequency distributions
 - Sentence and token counts
 - Type-token ratio analysis
@@ -83,28 +91,34 @@ After processing, CorpuScript generates a comprehensive summary report that prov
 - Processing time and performance metrics
 
 ### 5. Customization and Flexibility
+
 - Save and load preprocessing profiles for consistent application across projects.
 - Adjustable parameters to fine-tune preprocessing for specific research needs.
 - Support for multiple input and output file formats (e.g., .txt, .csv, .json).
 
 ### 6. Data Integrity and Security
+
 - Non-destructive processing: always keeps original files intact.
 - Option to create backups automatically before processing.
 - Detailed logging for audit trails and reproducibility.
 
 ### 7. Scalability
+
 - Efficiently handles corpora of all sizes, from small datasets to large-scale collections.
 - Optimized for performance on both personal computers and high-performance computing environments.
 
 ### 8. Interoperability
+
 - Export preprocessed data in formats compatible with popular corpus analysis tools.
 - Integration capabilities with other NLP pipelines and workflows.
 
 ### 9. Multilingual Support
+
 - Built-in support for processing texts in multiple languages.
 - Customizable language-specific preprocessing rules.
 
 ### 10. Continuous Updates and Community Support
+
 - Regular updates to incorporate the latest advancements in corpus linguistics and NLP.
 - Active user community for sharing best practices and custom preprocessing recipes.
 
@@ -158,4 +172,5 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ## Contact
-jhlopesalves@gmail.com
+
+<jhlopesalves@gmail.com>
