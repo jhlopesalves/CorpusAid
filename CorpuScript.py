@@ -17,23 +17,31 @@ from bs4 import BeautifulSoup
 from collections import Counter
 
 def resource_path(relative_path):
-    try:
-        base_path = sys._MEIPASS2
-    except Exception:
-        base_path = os.path.abspath(".")
+    """Get absolute path to resource, works for Nuitka and development."""
+    if getattr(sys, 'frozen', False):
+        base_path = sys._MEIPASS if hasattr(sys, '_MEIPASS') else os.path.dirname(sys.executable)
+    else:
+        base_path = os.path.dirname(os.path.abspath(__file__))
     return os.path.join(base_path, relative_path)
 
+
 def ensure_nltk_data():
+    import nltk
+    import os
+
+    # Add the appropriate path for the compiled environment
+    if getattr(sys, 'frozen', False):
+        nltk_data_path = resource_path('nltk_data')
+        nltk.data.path.append(nltk_data_path)
+
     required_data = [
         'tokenizers/punkt',
         'corpora/stopwords',
     ]
     for item in required_data:
         try:
-            import nltk
             nltk.data.find(item)
-        except (LookupError, ImportError):
-            import nltk
+        except LookupError:
             nltk.download(item.split('/')[-1])
 
 class PreprocessingModule:
@@ -799,6 +807,7 @@ class ReportWorker(QObject):
 class PreprocessorGUI(QMainWindow):
     def __init__(self):
         super().__init__()
+        self.version = "0.1"  # Added version attribute
         self.file_manager = FileManager()
         self.theme_manager = ThemeManager()
         self.processor = DocumentProcessor()
@@ -1195,12 +1204,30 @@ class PreprocessorGUI(QMainWindow):
     #         QDesktopServices.openUrl(QUrl("https://github.com/YourUsername/CorpuScript/releases/latest"))
 
 def main():
-    app = QApplication(sys.argv)
-    app.setWindowIcon(QIcon("my_icon.ico"))  
-    window = PreprocessorGUI()
-    window.show()
-    sys.exit(app.exec())
+    # Setup logging to a 'logs' directory
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    log_dir = os.path.join(base_dir, "logs")
+    if not os.path.exists(log_dir):
+        os.makedirs(log_dir)
+    log_file = os.path.join(log_dir, "CorpuScript.log")
+    logging.basicConfig(
+        filename=log_file,
+        filemode='w',
+        level=logging.DEBUG,
+        format='%(asctime)s - %(levelname)s - %(message)s'
+    )
+    logging.info("Application started.")
 
-if __name__ == '__main__':
-    logging.basicConfig(filename='app.log', level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
+    try:
+        app = QApplication(sys.argv)
+        icon_path = resource_path("my_icon.ico")
+        app.setWindowIcon(QIcon(icon_path))
+        window = PreprocessorGUI()  # Corrected line
+        window.show()
+        logging.info("Main window shown.")
+        sys.exit(app.exec())
+    except Exception as e:
+        logging.exception("An error occurred: %s", e)
+
+if __name__ == "__main__":
     main()
