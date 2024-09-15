@@ -3,6 +3,8 @@ import sys
 import re
 import unicodedata
 import logging
+import json
+import urllib.request
 import time
 import random
 import multiprocessing
@@ -14,14 +16,13 @@ from PySide6.QtWidgets import (
     QSplitter, QToolBar, QStatusBar, QListWidgetItem,
     QPlainTextEdit, QWizard, QWizardPage, QTableWidget, QComboBox, QHeaderView
 )
-from PySide6.QtCore import Qt, Signal, QObject, QThread, QSize, QRunnable, QThreadPool
+from PySide6.QtCore import Qt, Signal, QObject, QThread, QSize, QRunnable, QThreadPool, QUrl, QTimer
 from PySide6.QtGui import (
     QIcon, QFont, QColor, QAction, QPainter, QIntValidator,
-    QTextOption, QTextCursor, QTextCharFormat, QSyntaxHighlighter
+    QTextOption, QTextCursor, QTextCharFormat, QSyntaxHighlighter, QDesktopServices
 )
 from bs4 import BeautifulSoup
 from collections import Counter
-
 
 def resource_path(relative_path):
     if getattr(sys, 'frozen', False):
@@ -29,7 +30,6 @@ def resource_path(relative_path):
     else:
         base_path = os.path.dirname(os.path.abspath(__file__))
     return os.path.join(base_path, relative_path)
-
 
 def ensure_nltk_data():
     import nltk
@@ -46,11 +46,9 @@ def ensure_nltk_data():
         except LookupError:
             nltk.download(item.split('/')[-1])
 
-
 class PreprocessingModule:
     def process(self, text):
         raise NotImplementedError
-
 
 class CharacterFilterModule(PreprocessingModule):
     def __init__(self, chars_to_remove):
@@ -60,7 +58,6 @@ class CharacterFilterModule(PreprocessingModule):
         for item in self.chars_to_remove:
             text = text.replace(item, '')
         return text
-
 
 class WhitespaceNormalizationModule(PreprocessingModule):
     def process(self, text):
@@ -79,7 +76,6 @@ class WhitespaceNormalizationModule(PreprocessingModule):
         text = re.sub(r'\s+', ' ', text)
         return text.strip()
 
-
 class LineBreakRemovalModule(PreprocessingModule):
     def process(self, text):
         return re.sub(r'\n', ' ', text)
@@ -88,7 +84,6 @@ class LineBreakRemovalModule(PreprocessingModule):
 class LowercaseModule(PreprocessingModule):
     def process(self, text):
         return text.lower()
-
 
 class StopWordRemovalModule(PreprocessingModule):
     def __init__(self):
@@ -103,7 +98,6 @@ class StopWordRemovalModule(PreprocessingModule):
         result = [word for word in tokens if word.lower() not in self.stop_words]
         return result
 
-
 class RegexFilterModule(PreprocessingModule):
     def __init__(self, pattern, replacement=''):
         self.pattern = re.compile(pattern) if pattern else None
@@ -115,7 +109,6 @@ class RegexFilterModule(PreprocessingModule):
             return result
         return text
 
-
 class HTMLStripperModule(PreprocessingModule):
     def process(self, text):
         return BeautifulSoup(text, "html.parser").get_text()
@@ -125,7 +118,6 @@ class DiacriticRemovalModule(PreprocessingModule):
     def process(self, text):
         return ''.join(c for c in unicodedata.normalize('NFD', text)
                        if unicodedata.category(c) != 'Mn')
-
 
 class GreekLetterRemovalModule(PreprocessingModule):
     def process(self, text):
@@ -140,7 +132,6 @@ class CyrillicRemovalModule(PreprocessingModule):
 class SuperSubScriptRemovalModule(PreprocessingModule):
     def process(self, text):
         return ''.join([char for char in text if unicodedata.category(char) not in ['Ps', 'Pi', 'Pf', 'Pd']])
-
 
 class PreprocessingPipeline:
     def __init__(self):
@@ -166,7 +157,6 @@ class PreprocessingPipeline:
                 text = module.process(text)
             result = text
         return result.strip()
-
 
 class DocumentProcessor:
     def __init__(self):
@@ -230,7 +220,6 @@ class DocumentProcessor:
                 text = ' '.join(text)
         return text
 
-
 class ProcessingWorker(QRunnable):
     def __init__(self, processor, file_path, signals):
         super().__init__()
@@ -258,7 +247,6 @@ class ProcessingWorker(QRunnable):
         finally:
             self.signals.finished.emit()
 
-
 class ProcessingSignals(QObject):
     result = Signal(str, str, int, float)
     error = Signal(str, str)
@@ -267,7 +255,6 @@ class ProcessingSignals(QObject):
     update_progress = Signal(int, int, float, str)
     processing_complete = Signal(list, list)
     report_ready = Signal(str, str)
-
 
 class FileManager:
     def __init__(self):
@@ -324,7 +311,6 @@ class FileManager:
     def get_total_size(self):
         return sum(os.path.getsize(file) for file in self.files)
 
-
 class FileListWidget(QListWidget):
     files_added = Signal(list)
     files_removed = Signal(list)
@@ -374,7 +360,6 @@ class FileListWidget(QListWidget):
             self.files_removed.emit([item.text() for item in selected_items])
         else:
             super().keyPressEvent(event)
-
 
 class ThemeManager:
     def __init__(self):
@@ -501,7 +486,6 @@ class ThemeManager:
     def update_color(self, color_key, color_value):
         if color_key in self.custom_colors:
             self.custom_colors[color_key] = color_value
-
 
 class AdvancedPatternBuilder(QWizard):
     def __init__(self, parent=None):
@@ -656,7 +640,6 @@ class AdvancedPatternBuilder(QWizard):
         self.updatePattern()
         return self.final_pattern
 
-
 class RegexHighlighter(QSyntaxHighlighter):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -694,7 +677,6 @@ class RegexHighlighter(QSyntaxHighlighter):
                 continue
             self.setFormat(index, 1, self.formats['literal'])
             index += 1
-
 
 class ParametersDialog(QDialog):
     def __init__(self, current_parameters, parent=None):
@@ -803,7 +785,6 @@ class ParametersDialog(QDialog):
     def get_parameters(self):
         return self.parameters
 
-
 class CharacterSelectionDialog(QDialog):
     def __init__(self, current_chars, parent=None):
         super().__init__(parent)
@@ -862,7 +843,6 @@ class CharacterSelectionDialog(QDialog):
     def get_selected_chars(self):
         return self.selected_chars
 
-
 class FileLoadingDialog(QDialog):
     cancelled = Signal()
 
@@ -895,7 +875,6 @@ class FileLoadingDialog(QDialog):
         self.cancelled.emit()
         self.reject()
 
-
 class DirectoryLoadingWorker(QObject):
     finished = Signal(list)
 
@@ -915,7 +894,6 @@ class DirectoryLoadingWorker(QObject):
 
     def is_cancelled(self):
         return self._is_cancelled
-
 
 class ReportWorker(QObject):
     finished = Signal(str, str)
@@ -969,7 +947,6 @@ class ReportWorker(QObject):
         corpus_report += "</ul>"
         self.finished.emit(files_report, corpus_report)
 
-
 class PreprocessorGUI(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -1016,6 +993,7 @@ class PreprocessorGUI(QMainWindow):
         self.signals.report_ready.connect(self.display_report)
         self.apply_theme()
         self.showMaximized()
+        QTimer.singleShot(1000, self.check_for_updates)  # Automatically check for updates after startup
 
     def create_menu_bar(self):
         menu_bar = self.menuBar()
@@ -1035,6 +1013,7 @@ class PreprocessorGUI(QMainWindow):
         help_menu = menu_bar.addMenu("&Help")
         help_menu.addAction(self.create_action("About", "help-about", "", "About this application", self.show_about_dialog))
         help_menu.addAction(self.create_action("Documentation", "help-contents", "F1", "View documentation", self.show_documentation))
+        help_menu.addAction(self.create_action("Check for Updates", "system-software-update", "", "Check for updates", self.check_for_updates))
 
     def create_toolbar(self):
         self.toolbar = QToolBar()
@@ -1505,11 +1484,44 @@ class PreprocessorGUI(QMainWindow):
         self.files_report_text.setHtml(files_report)
         self.corpus_report_text.setHtml(corpus_report)
 
+    def check_for_updates(self, manual_trigger=False):
+        try:
+            url = 'https://api.github.com/repos/jhlopesalves/CorpuScript/releases/latest'
+            with urllib.request.urlopen(url) as response:
+                data = response.read()
+                latest_release = json.loads(data.decode('utf-8'))
+                latest_version = latest_release['tag_name']
+
+                def parse_version(version_str):
+                    return tuple(map(int, (version_str.strip('v').split('.'))))
+
+                current_version = parse_version(self.version)
+                latest_version_parsed = parse_version(latest_version)
+
+                if latest_version_parsed > current_version:
+                    reply = QMessageBox.question(
+                        self, 'Update Available',
+                        f"A new version {latest_version} is available. Do you want to download it?",
+                        QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes
+                    )
+                    if reply == QMessageBox.Yes:
+                        QDesktopServices.openUrl(QUrl(latest_release['html_url']))
+                elif manual_trigger:
+                    # Show pop-up only if manually triggered and up-to-date
+                    QMessageBox.information(self, 'Up-to-Date', "You are using the latest version.")
+        except urllib.error.HTTPError as e:
+            if e.code == 404 and manual_trigger:
+                # No releases found, but show info only if manually triggered
+                QMessageBox.information(self, 'No Releases', "No updates are available yet. You are using the latest version.")
+            elif e.code != 404:
+                QMessageBox.warning(self, 'Error', f"An error occurred while checking for updates:\n{str(e)}")
+        except Exception as e:
+            QMessageBox.warning(self, 'Error', f"An error occurred while checking for updates:\n{str(e)}")
+
     def closeEvent(self, event):
         if hasattr(self, 'loading_thread') and self.loading_thread.isRunning():
             self.cancel_loading()
         event.accept()
-
 
 def main():
     base_dir = os.path.dirname(os.path.abspath(__file__))
@@ -1537,7 +1549,6 @@ def main():
         sys.exit(app.exec())
     except Exception as e:
         logging.exception("An error occurred: %s", e)
-
 
 if __name__ == "__main__":
     main()
