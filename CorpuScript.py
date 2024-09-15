@@ -993,7 +993,7 @@ class PreprocessorGUI(QMainWindow):
         self.signals.report_ready.connect(self.display_report)
         self.apply_theme()
         self.showMaximized()
-        QTimer.singleShot(1000, self.check_for_updates)  # Automatically check for updates after startup
+        QTimer.singleShot(1000, lambda: self.check_for_updates(manual_trigger=False))
 
     def create_menu_bar(self):
         menu_bar = self.menuBar()
@@ -1013,7 +1013,7 @@ class PreprocessorGUI(QMainWindow):
         help_menu = menu_bar.addMenu("&Help")
         help_menu.addAction(self.create_action("About", "help-about", "", "About this application", self.show_about_dialog))
         help_menu.addAction(self.create_action("Documentation", "help-contents", "F1", "View documentation", self.show_documentation))
-        help_menu.addAction(self.create_action("Check for Updates", "system-software-update", "", "Check for updates", self.check_for_updates))
+        help_menu.addAction(self.create_action("Check for Updates", "system-software-update", "", "Check for updates", lambda: self.check_for_updates(manual_trigger=True)))
 
     def create_toolbar(self):
         self.toolbar = QToolBar()
