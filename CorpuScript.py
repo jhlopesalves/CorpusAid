@@ -12,17 +12,18 @@ from PySide6.QtWidgets import (
     QTextEdit, QProgressBar, QFileDialog, QLabel, QListWidget,
     QTabWidget, QLineEdit, QDialog, QDialogButtonBox, QCheckBox, QMessageBox,
     QSplitter, QToolBar, QStatusBar, QListWidgetItem,
-    QPlainTextEdit, QWizard, QWizardPage, QTableWidget, QComboBox
+    QPlainTextEdit, QWizard, QWizardPage, QTableWidget, QComboBox, QHeaderView
 )
 from PySide6.QtCore import Qt, Signal, QObject, QThread, QSize, QRunnable, QThreadPool
-from PySide6.QtGui import (QIcon, QFont, QColor, QAction, QPainter, QIntValidator,
-                           QTextOption, QTextCursor, QTextCharFormat)
+from PySide6.QtGui import (
+    QIcon, QFont, QColor, QAction, QPainter, QIntValidator,
+    QTextOption, QTextCursor, QTextCharFormat, QSyntaxHighlighter
+)
 from bs4 import BeautifulSoup
 from collections import Counter
 
 
 def resource_path(relative_path):
-    """Get absolute path to resource, works for Nuitka and development."""
     if getattr(sys, 'frozen', False):
         base_path = sys._MEIPASS if hasattr(sys, '_MEIPASS') else os.path.dirname(sys.executable)
     else:
@@ -32,12 +33,9 @@ def resource_path(relative_path):
 
 def ensure_nltk_data():
     import nltk
-
-    # Add the appropriate path for the compiled environment
     if getattr(sys, 'frozen', False):
         nltk_data_path = resource_path('nltk_data')
         nltk.data.path.append(nltk_data_path)
-
     required_data = [
         'tokenizers/punkt',
         'corpora/stopwords',
@@ -280,7 +278,8 @@ class FileManager:
         self.files.extend(new_files)
         return new_files
 
-    def add_directory(self, directory, signals):
+    def add_directory(self, directory, signals, is_cancelled_callback):
+        temp_files = []
         new_files = []
         total_files = 0
         for root, dirs, files in os.walk(directory):
@@ -289,13 +288,16 @@ class FileManager:
         processed_files = 0
         for root, dirs, files in os.walk(directory):
             for file in files:
+                if is_cancelled_callback():
+                    signals.update_progress.emit(processed_files, total_files, 0, "Operation cancelled.")
+                    return []
                 if file.endswith(".txt"):
                     file_path = os.path.join(root, file)
                     normalized_path = os.path.normpath(file_path)
-                    if normalized_path not in self.files:
+                    if normalized_path not in self.files and normalized_path not in temp_files:
                         try:
                             time.sleep(random.uniform(0.01, 0.1))
-                            self.files.append(normalized_path)
+                            temp_files.append(normalized_path)
                             new_files.append(normalized_path)
                             processed_files += 1
                             elapsed_time = time.time() - start_time
@@ -305,6 +307,7 @@ class FileManager:
                             signals.update_progress.emit(processed_files, total_files, 0, f"OS error: {str(e)}")
                         except Exception as e:
                             signals.update_progress.emit(processed_files, total_files, 0, f"Unexpected error: {str(e)}")
+        self.files.extend(temp_files)
         return new_files
 
     def remove_files(self, file_paths):
@@ -516,6 +519,11 @@ class AdvancedPatternBuilder(QWizard):
         self.pattern_table = QTableWidget()
         self.pattern_table.setColumnCount(4)
         self.pattern_table.setHorizontalHeaderLabels(["Start Condition", "End Condition Type", "End Condition", "Number Length"])
+        self.pattern_table.horizontalHeader().setStretchLastSection(False)
+        self.pattern_table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        header = self.pattern_table.horizontalHeader()
+        for i in range(4):
+            header.setSectionResizeMode(i, QHeaderView.Stretch)
         layout.addWidget(self.pattern_table)
         add_button = QPushButton("Add Pattern")
         add_button.clicked.connect(self.addPattern)
@@ -525,6 +533,7 @@ class AdvancedPatternBuilder(QWizard):
         options_layout.addWidget(self.case_sensitive)
         self.whole_words = QCheckBox("Match whole words only")
         options_layout.addWidget(self.whole_words)
+        options_layout.addStretch()
         layout.addLayout(options_layout)
         page.setLayout(layout)
         return page
@@ -533,8 +542,8 @@ class AdvancedPatternBuilder(QWizard):
         page = QWizardPage()
         page.setTitle("Preview and Test")
         layout = QVBoxLayout()
-        self.pattern_preview = QLineEdit()
-        self.pattern_preview.setReadOnly(True)
+        self.pattern_preview = QPlainTextEdit()
+        self.pattern_preview.setReadOnly(False)
         layout.addWidget(QLabel("Pattern Preview:"))
         layout.addWidget(self.pattern_preview)
         self.explanation = QLabel()
@@ -616,7 +625,7 @@ class AdvancedPatternBuilder(QWizard):
                 final_pattern = rf"\b({final_pattern})\b"
             flags = re.DOTALL | (0 if self.case_sensitive.isChecked() else re.IGNORECASE)
             self.final_pattern = re.compile(final_pattern, flags)
-            self.pattern_preview.setText(final_pattern)
+            self.pattern_preview.setPlainText(final_pattern)
             self.explanation.setText(f"This pattern will match: {', '.join(patterns)}")
         except re.error as e:
             QMessageBox.warning(self, "Invalid Pattern", f"The entered pattern is invalid:\n{str(e)}")
@@ -648,23 +657,58 @@ class AdvancedPatternBuilder(QWizard):
         return self.final_pattern
 
 
+class RegexHighlighter(QSyntaxHighlighter):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.formats = {
+            'meta_char': QTextCharFormat(),
+            'quantifier': QTextCharFormat(),
+            'grouping': QTextCharFormat(),
+            'character_class': QTextCharFormat(),
+            'escaped_char': QTextCharFormat(),
+            'literal': QTextCharFormat(),
+        }
+        self.formats['meta_char'].setForeground(QColor("#C586C0"))
+        self.formats['quantifier'].setForeground(QColor("#D16969"))
+        self.formats['grouping'].setForeground(QColor("#4EC9B0"))
+        self.formats['character_class'].setForeground(QColor("#DCDCAA"))
+        self.formats['escaped_char'].setForeground(QColor("#9CDCFE"))
+        self.formats['literal'].setForeground(QColor("#FFFFFF"))
+
+    def highlightBlock(self, text):
+        index = 0
+        while index < len(text):
+            char = text[index]
+            if char == '\\' and index + 1 < len(text):
+                self.setFormat(index, 2, self.formats['escaped_char'])
+                index += 2
+                continue
+            if char in '.^$|?*+(){}[]':
+                if char in '(){}[]':
+                    self.setFormat(index, 1, self.formats['grouping'])
+                elif char in '?*+':
+                    self.setFormat(index, 1, self.formats['quantifier'])
+                else:
+                    self.setFormat(index, 1, self.formats['meta_char'])
+                index += 1
+                continue
+            self.setFormat(index, 1, self.formats['literal'])
+            index += 1
+
+
 class ParametersDialog(QDialog):
     def __init__(self, current_parameters, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Processing Parameters")
-        self.setMinimumWidth(400)
+        self.setMinimumSize(200, 400)
         layout = QVBoxLayout(self)
         self.parameters = current_parameters.copy()
         self.pattern_data = self.parameters.get("pattern_data", [])
-
-        # Create tabs
         tabs = QTabWidget()
         general_tab = QWidget()
         general_layout = QVBoxLayout(general_tab)
         advanced_tab = QWidget()
         advanced_layout = QVBoxLayout(advanced_tab)
-
-        # General options
         options = [
             ("remove_break_lines", "Remove break lines"),
             ("lowercase", "Lowercase"),
@@ -676,32 +720,42 @@ class ParametersDialog(QDialog):
             ("remove_cyrillic", "Remove Cyrillic script"),
             ("remove_super_sub_script", "Remove superscript and subscript characters")
         ]
+        vbox_layout = QVBoxLayout()
         for key, label in options:
             checkbox = QCheckBox(label)
             checkbox.setChecked(self.parameters.get(key, False))
             checkbox.stateChanged.connect(lambda state, k=key: self.parameters.update({k: bool(state)}))
             checkbox.setToolTip(f"Enable or disable {label.lower()}")
-            general_layout.addWidget(checkbox)
-
-        # Advanced options
+            vbox_layout.addWidget(checkbox)
+        general_layout.addLayout(vbox_layout)
+        general_layout.addStretch()
         regex_button = QPushButton("Set Pattern")
         regex_button.clicked.connect(self.open_regex_dialog)
         regex_button.setToolTip("Define advanced regex patterns")
         advanced_layout.addWidget(regex_button)
-        self.regex_label = QLabel("Current pattern: " + self.parameters.get("regex_pattern", "None"))
-        advanced_layout.addWidget(self.regex_label)
+        self.regex_display = QPlainTextEdit()
+        self.regex_display.setReadOnly(True)
+        self.regex_display.setPlainText(self.parameters.get("regex_pattern") or "None")
+        self.regex_display.setFont(QFont("Courier New", 10))
+        self.regex_display.setStyleSheet("background-color: #1E1E1E; color: #FFFFFF;")
+        self.regex_highlighter = RegexHighlighter(self.regex_display.document())
+        advanced_layout.addWidget(QLabel("Current pattern:"))
+        advanced_layout.addWidget(self.regex_display)
         char_remove_button = QPushButton("Select Characters to Remove")
         char_remove_button.clicked.connect(self.open_char_selection)
         char_remove_button.setToolTip("Select specific characters or sequences to remove")
         advanced_layout.addWidget(char_remove_button)
-        self.selected_chars_label = QLabel("Selected items: " + ', '.join(self.parameters.get("chars_to_remove", [])))
-        advanced_layout.addWidget(self.selected_chars_label)
-
-        # Add tabs to the dialog
+        self.char_list_widget = QListWidget()
+        self.update_char_list()
+        advanced_layout.addWidget(QLabel("Selected items:"))
+        advanced_layout.addWidget(self.char_list_widget)
+        delete_button = QPushButton("Delete Selected")
+        delete_button.clicked.connect(self.delete_selected_chars)
+        advanced_layout.addWidget(delete_button)
+        advanced_layout.addStretch()
         tabs.addTab(general_tab, "General")
         tabs.addTab(advanced_tab, "Advanced")
         layout.addWidget(tabs)
-
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
@@ -723,7 +777,7 @@ class ParametersDialog(QDialog):
                 try:
                     re.compile(pattern.pattern)
                     self.parameters["regex_pattern"] = pattern.pattern
-                    self.regex_label.setText("Current pattern: " + pattern.pattern)
+                    self.regex_display.setPlainText(pattern.pattern)
                     self.pattern_data = dialog.getPatternData()
                     self.parameters["pattern_data"] = self.pattern_data
                 except re.error as e:
@@ -733,7 +787,18 @@ class ParametersDialog(QDialog):
         dialog = CharacterSelectionDialog(self.parameters.get("chars_to_remove", []), self)
         if dialog.exec():
             self.parameters["chars_to_remove"] = dialog.get_selected_chars()
-            self.selected_chars_label.setText("Selected items: " + ', '.join(self.parameters["chars_to_remove"]))
+            self.update_char_list()
+
+    def update_char_list(self):
+        self.char_list_widget.clear()
+        for item in self.parameters.get("chars_to_remove", []):
+            list_item = QListWidgetItem(item)
+            self.char_list_widget.addItem(list_item)
+
+    def delete_selected_chars(self):
+        for item in self.char_list_widget.selectedItems():
+            self.parameters["chars_to_remove"].remove(item.text())
+        self.update_char_list()
 
     def get_parameters(self):
         return self.parameters
@@ -746,38 +811,26 @@ class CharacterSelectionDialog(QDialog):
         self.setMinimumSize(400, 300)
         layout = QVBoxLayout(self)
         self.selected_chars = list(current_chars)
-
-        # Input layout
         input_layout = QHBoxLayout()
         self.char_input = QLineEdit()
         self.char_input.setPlaceholderText("Enter characters or sequences to remove")
         input_layout.addWidget(self.char_input)
-
-        # Include button
         include_button = QPushButton("Include")
         include_button.clicked.connect(self.add_chars)
-        include_button.setDefault(True)  # Set 'Include' as the default button
+        include_button.setDefault(True)
         input_layout.addWidget(include_button)
         layout.addLayout(input_layout)
-
-        # Character list
         self.char_list = QListWidget()
         self.update_char_list()
         layout.addWidget(QLabel("Items to remove:"))
         layout.addWidget(self.char_list)
-
-        # Delete button
         delete_button = QPushButton("Delete Selected")
         delete_button.clicked.connect(self.delete_selected)
         layout.addWidget(delete_button)
-
-        # Dialog buttons
         button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         button_box.accepted.connect(self.accept)
         button_box.rejected.connect(self.reject)
         layout.addWidget(button_box)
-
-        # Disable default behavior for 'OK' and 'Cancel' buttons
         ok_button = button_box.button(QDialogButtonBox.Ok)
         if ok_button:
             ok_button.setAutoDefault(False)
@@ -786,8 +839,6 @@ class CharacterSelectionDialog(QDialog):
         if cancel_button:
             cancel_button.setAutoDefault(False)
             cancel_button.setDefault(False)
-
-        # Connect 'Enter' key in QLineEdit to 'add_chars' method
         self.char_input.returnPressed.connect(self.add_chars)
 
     def add_chars(self):
@@ -813,6 +864,8 @@ class CharacterSelectionDialog(QDialog):
 
 
 class FileLoadingDialog(QDialog):
+    cancelled = Signal()
+
     def __init__(self, parent=None, title="Loading Files..."):
         super().__init__(parent)
         self.setWindowTitle(title)
@@ -824,7 +877,7 @@ class FileLoadingDialog(QDialog):
         self.label = QLabel("Loading files...")
         layout.addWidget(self.label)
         self.cancel_button = QPushButton("Cancel")
-        self.cancel_button.clicked.connect(self.reject)
+        self.cancel_button.clicked.connect(self.on_cancel)
         layout.addWidget(self.cancel_button)
 
     def update_progress(self, current, total, time_remaining, error):
@@ -836,14 +889,11 @@ class FileLoadingDialog(QDialog):
         else:
             self.label.setText(f"Processing file {current} of {total}...")
         if error:
-            # Display error in log area instead of modal dialog
             pass
 
-    def accept(self):
-        pass
-
-    def reject(self):
-        super().reject()
+    def on_cancel(self):
+        self.cancelled.emit()
+        self.reject()
 
 
 class DirectoryLoadingWorker(QObject):
@@ -854,10 +904,17 @@ class DirectoryLoadingWorker(QObject):
         self.file_manager = file_manager
         self.directory = directory
         self.signals = signals
+        self._is_cancelled = False
 
     def run(self):
-        new_files = self.file_manager.add_directory(self.directory, self.signals)
+        new_files = self.file_manager.add_directory(self.directory, self.signals, self.is_cancelled)
         self.finished.emit(new_files)
+
+    def cancel(self):
+        self._is_cancelled = True
+
+    def is_cancelled(self):
+        return self._is_cancelled
 
 
 class ReportWorker(QObject):
@@ -958,6 +1015,7 @@ class PreprocessorGUI(QMainWindow):
         self.signals.finished.connect(self.on_worker_finished)
         self.signals.report_ready.connect(self.display_report)
         self.apply_theme()
+        self.showMaximized()
 
     def create_menu_bar(self):
         menu_bar = self.menuBar()
@@ -1002,6 +1060,8 @@ class PreprocessorGUI(QMainWindow):
     def setup_central_widget(self):
         central_widget = QWidget()
         main_layout = QHBoxLayout(central_widget)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(0)
         left_panel = QWidget()
         left_layout = QVBoxLayout(left_panel)
         file_list_widget = QWidget()
@@ -1023,10 +1083,9 @@ class PreprocessorGUI(QMainWindow):
         left_layout.addWidget(report_widget)
         text_display = QWidget()
         text_layout = QVBoxLayout(text_display)
-        
-        left_panel.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
+        text_display.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        left_panel.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         left_panel.setMinimumWidth(300)
-
         self.text_tabs = QTabWidget()
         self.original_text = QPlainTextEdit()
         self.processed_text = QPlainTextEdit()
@@ -1036,19 +1095,32 @@ class PreprocessorGUI(QMainWindow):
         search_layout = QHBoxLayout()
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText("Search in text...")
-        search_button = QPushButton("Search")
-        search_button.setIcon(QIcon.fromTheme("edit-find"))
-        search_button.clicked.connect(self.search_text)
+        self.search_input.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         search_layout.addWidget(self.search_input)
-        search_layout.addWidget(search_button)
+        self.prev_button = QPushButton()
+        self.prev_button.setIcon(QIcon.fromTheme("go-previous"))
+        self.prev_button.setToolTip("Previous occurrence")
+        self.prev_button.clicked.connect(self.go_to_previous_occurrence)
+        self.prev_button.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        search_layout.addWidget(self.prev_button)
+        self.next_button = QPushButton()
+        self.next_button.setIcon(QIcon.fromTheme("go-next"))
+        self.next_button.setToolTip("Next occurrence")
+        self.next_button.clicked.connect(self.go_to_next_occurrence)
+        self.next_button.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        search_layout.addWidget(self.next_button)
+        self.occurrence_label = QLabel("0/0")
+        self.occurrence_label.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        search_layout.addWidget(self.occurrence_label)
         text_layout.addLayout(search_layout)
+        self.search_input.textChanged.connect(self.on_search_term_changed)
+        self.current_occurrence_index = -1
+        self.search_results = []
         splitter = QSplitter(Qt.Horizontal)
         splitter.addWidget(left_panel)
         splitter.addWidget(text_display)
-        # Set initial sizes for the splitter
-        splitter.setSizes([890, 1000])  # Adjust these values as needed
-        splitter.setStretchFactor(0, 4)  # Left panel
-        splitter.setStretchFactor(1, 5)  # Right panel
+        splitter.setStretchFactor(0, 1)
+        splitter.setStretchFactor(1, 1)
         main_layout.addWidget(splitter)
         self.setCentralWidget(central_widget)
 
@@ -1079,11 +1151,6 @@ class PreprocessorGUI(QMainWindow):
         self.progress_bar = QProgressBar()
         self.progress_bar.setMaximumWidth(200)
         self.status_bar.addPermanentWidget(self.progress_bar)
-        self.log_area = QTextEdit()
-        self.log_area.setReadOnly(True)
-        self.log_area.setMaximumHeight(100)
-        self.log_area.hide()
-        self.status_bar.addPermanentWidget(self.log_area)
         self.update_status_bar()
 
     def apply_theme(self):
@@ -1113,8 +1180,11 @@ class PreprocessorGUI(QMainWindow):
         total_size_mb = sum(os.path.getsize(file) for file in self.file_manager.get_files()) / (1024 * 1024)
         status_text = f"Files: {len(self.file_manager.get_files())} | Total Size: {total_size_mb:.2f} MB | Status: {'Processing' if self.thread_pool.activeThreadCount() > 0 else 'Idle'}"
         self.status_bar.showMessage(status_text)
+        if 'Idle' in status_text:
+            self.status_bar.clearMessage()
 
     def open_file(self):
+        self.status_bar.clearMessage()
         files, _ = QFileDialog.getOpenFileNames(self, "Select files", "", "Text Files (*.txt)")
         if files:
             new_files = self.file_manager.add_files(files)
@@ -1123,6 +1193,9 @@ class PreprocessorGUI(QMainWindow):
             self.update_report()
 
     def open_directory(self):
+        self.status_bar.clearMessage()
+        if hasattr(self, 'loading_thread') and self.loading_thread.isRunning():
+            self.cancel_loading()
         directory = QFileDialog.getExistingDirectory(self, "Select Directory")
         if directory:
             self.loading_dialog = FileLoadingDialog(self)
@@ -1133,15 +1206,27 @@ class PreprocessorGUI(QMainWindow):
             self.loading_worker.moveToThread(self.loading_thread)
             self.loading_thread.started.connect(self.loading_worker.run)
             self.loading_worker.finished.connect(self.on_directory_loading_finished)
+            self.loading_dialog.cancelled.connect(self.cancel_loading)
             self.loading_thread.start()
+
+    def cancel_loading(self):
+        if hasattr(self, 'loading_worker'):
+            self.loading_worker.cancel()
+        if hasattr(self, 'loading_thread'):
+            self.loading_thread.quit()
+            self.loading_thread.wait()
+        self.loading_dialog.close()
 
     def on_directory_loading_finished(self, new_files):
         self.loading_thread.quit()
         self.loading_thread.wait()
         self.loading_dialog.close()
-        self.file_list.addItems(new_files)
-        self.update_status_bar()
-        self.update_report()
+        if new_files:
+            self.file_list.addItems(new_files)
+            self.update_status_bar()
+            self.update_report()
+        else:
+            self.status_bar.showMessage("Operation cancelled.", 5000)
 
     def save_file(self):
         if self.processed_results:
@@ -1168,6 +1253,7 @@ class PreprocessorGUI(QMainWindow):
             QMessageBox.warning(self, 'Save Failed', "No processed files to save.")
 
     def process_files(self):
+        self.status_bar.clearMessage()
         logging.debug("PreprocessorGUI: Process files function called")
         if not self.file_manager.get_files():
             QMessageBox.warning(self, "No Files", "Please select files to process.")
@@ -1214,26 +1300,28 @@ class PreprocessorGUI(QMainWindow):
             self.errors.append((file_path, error))
             self.files_processed += 1
         remaining_files = len(self.file_manager.get_files()) - self.files_processed
-        self.update_progress_info(error=f"Error in {os.path.basename(file_path)} | Remaining files: {remaining_files}")
-        self.log_area.append(f"Error processing {file_path}: {error}")
-        self.log_area.show()
+        error_message = f"Error in {os.path.basename(file_path)}: {error} | Remaining files: {remaining_files}"
+        self.update_progress_info(error=error_message)
+        self.status_bar.showMessage(error_message, 5000)
+        logging.error(f"Error processing {file_path}: {error}")
 
     def handle_warning(self, file_path, warning):
         with self.lock:
             self.warnings.append((file_path, warning))
             self.files_processed += 1
         remaining_files = len(self.file_manager.get_files()) - self.files_processed
-        self.update_progress_info(message=f"Warning in {os.path.basename(file_path)} | Remaining files: {remaining_files}")
-        self.log_area.append(f"Warning processing {file_path}: {warning}")
-        self.log_area.show()
+        warning_message = f"Warning in {os.path.basename(file_path)}: {warning} | Remaining files: {remaining_files}"
+        self.update_progress_info(message=warning_message)
+        self.status_bar.showMessage(warning_message, 5000)
+        logging.warning(f"Warning processing {file_path}: {warning}")
 
     def update_progress(self, current, total, time_remaining, error):
         with self.lock:
             self.files_processed = current
         self.update_progress_info()
         if error:
-            self.log_area.append(f"Error: {error}")
-            self.log_area.show()
+            self.status_bar.showMessage(f"Error: {error}", 5000)
+            logging.error(f"Error during loading: {error}")
 
     def on_worker_finished(self):
         logging.debug("Worker finished")
@@ -1241,8 +1329,9 @@ class PreprocessorGUI(QMainWindow):
             self.signals.processing_complete.emit(self.processed_results, self.warnings)
             if self.errors:
                 error_msg = "\n".join([f"{file}: {error}" for file, error in self.errors])
-                self.log_area.append(f"Errors occurred during processing:\n\n{error_msg}")
-                self.log_area.show()
+                QMessageBox.warning(self, 'Processing Completed with Errors', f"Errors occurred during processing:\n\n{error_msg}")
+            else:
+                self.status_bar.clearMessage()
             self.update_status_bar()
             self.processing_dialog.close()
             self.display_results(self.processed_results, self.warnings)
@@ -1260,13 +1349,11 @@ class PreprocessorGUI(QMainWindow):
                     self.original_text.appendPlainText(f"File: {file_path}\n\n{original_text}\n\n")
                     self.processed_text.appendPlainText(f"File: {file_path}\n\n{processed_text}\n\n")
                 except Exception as e:
-                    self.log_area.append(f"Error reading file {file_path}: {str(e)}")
-                    self.log_area.show()
+                    logging.error(f"Error reading file {file_path}: {str(e)}")
             self.current_file = results[0][0]
         if warnings:
             warning_msg = "\n".join([f"{file}: {warning}" for file, warning in warnings])
-            self.log_area.append(f"Warnings during processing:\n\n{warning_msg}")
-            self.log_area.show()
+            QMessageBox.warning(self, 'Processing Warnings', f"Warnings during processing:\n\n{warning_msg}")
 
     def start_new_cleaning(self):
         self.file_manager.clear_files()
@@ -1314,13 +1401,81 @@ class PreprocessorGUI(QMainWindow):
 
     def search_text(self):
         search_term = self.search_input.text()
-        if search_term:
-            active_text_edit = self.text_tabs.currentWidget()
-            if isinstance(active_text_edit, QPlainTextEdit):
-                found = active_text_edit.find(search_term)
-                if not found:
-                    QMessageBox.information(self, "Not Found",
-                                            f"The text '{search_term}' was not found.")
+        active_text_edit = self.text_tabs.currentWidget()
+        if isinstance(active_text_edit, QPlainTextEdit):
+            self.highlight_search_term(active_text_edit, search_term)
+            if self.search_results:
+                self.current_occurrence_index = 0
+                self.goto_occurrence(active_text_edit, self.current_occurrence_index)
+                self.update_occurrence_label()
+            else:
+                self.current_occurrence_index = -1
+                self.occurrence_label.setText("0/0")
+                QMessageBox.information(self, "Not Found",
+                                        f"The text '{search_term}' was not found.")
+
+    def on_search_term_changed(self):
+        search_term = self.search_input.text()
+        active_text_edit = self.text_tabs.currentWidget()
+        if isinstance(active_text_edit, QPlainTextEdit):
+            self.highlight_search_term(active_text_edit, search_term)
+            if self.search_results:
+                self.current_occurrence_index = 0
+                self.goto_occurrence(active_text_edit, self.current_occurrence_index)
+            else:
+                self.current_occurrence_index = -1
+            self.update_occurrence_label()
+
+    def highlight_search_term(self, text_edit, search_term):
+        extra_selections = []
+        self.search_results = []
+        if not search_term:
+            text_edit.setExtraSelections(extra_selections)
+            self.occurrence_label.setText("0/0")
+            return
+        highlight_format = QTextCharFormat()
+        highlight_format.setBackground(QColor("yellow"))
+        document = text_edit.document()
+        cursor = QTextCursor(document)
+        occurrence_count = 0
+        while True:
+            cursor = document.find(search_term, cursor)
+            if cursor.isNull():
+                break
+            occurrence_count += 1
+            selection = QTextEdit.ExtraSelection()
+            selection.cursor = cursor
+            selection.format = highlight_format
+            extra_selections.append(selection)
+            self.search_results.append(QTextCursor(cursor))
+            cursor.setPosition(cursor.position() + 1)
+        text_edit.setExtraSelections(extra_selections)
+        self.update_occurrence_label()
+
+    def update_occurrence_label(self):
+        total = len(self.search_results)
+        current = self.current_occurrence_index + 1 if self.current_occurrence_index >= 0 else 0
+        self.occurrence_label.setText(f"{current}/{total}")
+
+    def goto_occurrence(self, text_edit, index):
+        if 0 <= index < len(self.search_results):
+            cursor = self.search_results[index]
+            text_edit.setTextCursor(cursor)
+            text_edit.centerCursor()
+
+    def go_to_next_occurrence(self):
+        active_text_edit = self.text_tabs.currentWidget()
+        if isinstance(active_text_edit, QPlainTextEdit) and self.search_results:
+            self.current_occurrence_index = (self.current_occurrence_index + 1) % len(self.search_results)
+            self.goto_occurrence(active_text_edit, self.current_occurrence_index)
+            self.update_occurrence_label()
+
+    def go_to_previous_occurrence(self):
+        active_text_edit = self.text_tabs.currentWidget()
+        if isinstance(active_text_edit, QPlainTextEdit) and self.search_results:
+            self.current_occurrence_index = (self.current_occurrence_index - 1) % len(self.search_results)
+            self.goto_occurrence(active_text_edit, self.current_occurrence_index)
+            self.update_occurrence_label()
 
     def undo(self):
         active_text_edit = self.text_tabs.currentWidget()
@@ -1350,9 +1505,13 @@ class PreprocessorGUI(QMainWindow):
         self.files_report_text.setHtml(files_report)
         self.corpus_report_text.setHtml(corpus_report)
 
+    def closeEvent(self, event):
+        if hasattr(self, 'loading_thread') and self.loading_thread.isRunning():
+            self.cancel_loading()
+        event.accept()
+
 
 def main():
-    # Setup logging to a 'logs' directory
     base_dir = os.path.dirname(os.path.abspath(__file__))
     log_dir = os.path.join(base_dir, "logs")
     if not os.path.exists(log_dir):
@@ -1365,7 +1524,6 @@ def main():
         format='%(asctime)s - %(levelname)s - %(message)s'
     )
     logging.info("Application started.")
-
     try:
         app = QApplication(sys.argv)
         icon_path = resource_path("my_icon.ico")

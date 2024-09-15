@@ -152,6 +152,10 @@ Nuitka/
 hook-corpuscript.py#hooks
 hook-corpuscript.py
 
+#Icons
+setup_icon.ico
+my_icon.ico
+
 # Ignore license and requirements files
 license.txt
 requirements.txt
