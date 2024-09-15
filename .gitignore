@@ -29,6 +29,9 @@ wheels/
 CorpuScript.build/
 CorpuScript.dist/
 setup/
+logs/
+InstallerOutput/
+
 
 # PyInstaller
 *.manifest
@@ -146,4 +149,12 @@ include/
 Nuitka/
 
 #hooks
+hook-corpuscript.py#hooks
 hook-corpuscript.py
+
+# Ignore license and requirements files
+license.txt
+requirements.txt
+setup_icon.ico
+my_icon.ico
+

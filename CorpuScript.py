@@ -6,15 +6,20 @@ import logging
 import time
 import random
 import multiprocessing
-from PySide6.QtWidgets import (QApplication, QMainWindow, QVBoxLayout, QHBoxLayout, QWidget, QPushButton,
-                               QTextEdit, QProgressBar, QFileDialog, QLabel, QListWidget,
-                               QTabWidget, QLineEdit, QDialog, QDialogButtonBox, QCheckBox, QMessageBox,
-                               QScrollArea, QSplitter, QToolBar, QStatusBar, QListWidgetItem,
-                               QPlainTextEdit, QWizard, QWizardPage, QTableWidget, QComboBox)
+from threading import Lock
+from PySide6.QtWidgets import (
+    QApplication, QMainWindow, QVBoxLayout, QHBoxLayout, QWidget, QPushButton, QSizePolicy,
+    QTextEdit, QProgressBar, QFileDialog, QLabel, QListWidget,
+    QTabWidget, QLineEdit, QDialog, QDialogButtonBox, QCheckBox, QMessageBox,
+    QSplitter, QToolBar, QStatusBar, QListWidgetItem,
+    QPlainTextEdit, QWizard, QWizardPage, QTableWidget, QComboBox
+)
 from PySide6.QtCore import Qt, Signal, QObject, QThread, QSize, QRunnable, QThreadPool
-from PySide6.QtGui import QIcon, QFont, QColor, QAction, QPainter, QIntValidator, QTextOption, QTextCursor, QTextCharFormat
+from PySide6.QtGui import (QIcon, QFont, QColor, QAction, QPainter, QIntValidator,
+                           QTextOption, QTextCursor, QTextCharFormat)
 from bs4 import BeautifulSoup
 from collections import Counter
+
 
 def resource_path(relative_path):
     """Get absolute path to resource, works for Nuitka and development."""
@@ -27,7 +32,6 @@ def resource_path(relative_path):
 
 def ensure_nltk_data():
     import nltk
-    import os
 
     # Add the appropriate path for the compiled environment
     if getattr(sys, 'frozen', False):
@@ -44,17 +48,21 @@ def ensure_nltk_data():
         except LookupError:
             nltk.download(item.split('/')[-1])
 
+
 class PreprocessingModule:
     def process(self, text):
         raise NotImplementedError
 
+
 class CharacterFilterModule(PreprocessingModule):
     def __init__(self, chars_to_remove):
         self.chars_to_remove = sorted(chars_to_remove, key=len, reverse=True)
+
     def process(self, text):
         for item in self.chars_to_remove:
             text = text.replace(item, '')
         return text
+
 
 class WhitespaceNormalizationModule(PreprocessingModule):
     def process(self, text):
@@ -73,18 +81,22 @@ class WhitespaceNormalizationModule(PreprocessingModule):
         text = re.sub(r'\s+', ' ', text)
         return text.strip()
 
+
 class LineBreakRemovalModule(PreprocessingModule):
     def process(self, text):
         return re.sub(r'\n', ' ', text)
+
 
 class LowercaseModule(PreprocessingModule):
     def process(self, text):
         return text.lower()
 
+
 class StopWordRemovalModule(PreprocessingModule):
     def __init__(self):
         from nltk.corpus import stopwords
         self.stop_words = set(stopwords.words('english'))
+
     def process(self, text):
         if isinstance(text, str):
             tokens = text.split()
@@ -93,42 +105,52 @@ class StopWordRemovalModule(PreprocessingModule):
         result = [word for word in tokens if word.lower() not in self.stop_words]
         return result
 
+
 class RegexFilterModule(PreprocessingModule):
     def __init__(self, pattern, replacement=''):
         self.pattern = re.compile(pattern) if pattern else None
         self.replacement = replacement
+
     def process(self, text):
         if self.pattern:
             result = self.pattern.sub(self.replacement, text)
             return result
         return text
 
+
 class HTMLStripperModule(PreprocessingModule):
     def process(self, text):
         return BeautifulSoup(text, "html.parser").get_text()
+
 
 class DiacriticRemovalModule(PreprocessingModule):
     def process(self, text):
         return ''.join(c for c in unicodedata.normalize('NFD', text)
                        if unicodedata.category(c) != 'Mn')
 
+
 class GreekLetterRemovalModule(PreprocessingModule):
     def process(self, text):
         return ''.join(char for char in text if not unicodedata.name(char, '').startswith('GREEK'))
+
 
 class CyrillicRemovalModule(PreprocessingModule):
     def process(self, text):
         return ''.join(char for char in text if not unicodedata.name(char, '').startswith('CYRILLIC'))
 
+
 class SuperSubScriptRemovalModule(PreprocessingModule):
     def process(self, text):
         return ''.join([char for char in text if unicodedata.category(char) not in ['Ps', 'Pi', 'Pf', 'Pd']])
 
+
 class PreprocessingPipeline:
     def __init__(self):
         self.modules = []
+
     def add_module(self, module):
         self.modules.append(module)
+
     def process(self, text):
         requires_tokenization = any(isinstance(module, StopWordRemovalModule) for module in self.modules)
         if requires_tokenization:
@@ -147,6 +169,7 @@ class PreprocessingPipeline:
             result = text
         return result.strip()
 
+
 class DocumentProcessor:
     def __init__(self):
         self.pipeline = PreprocessingPipeline()
@@ -164,6 +187,7 @@ class DocumentProcessor:
             "normalize_spacing": False,
             "pattern_data": []
         }
+
     def set_parameters(self, parameters):
         try:
             if "regex_pattern" in parameters:
@@ -172,6 +196,7 @@ class DocumentProcessor:
             self.update_pipeline()
         except re.error:
             pass
+
     def update_pipeline(self):
         self.pipeline = PreprocessingPipeline()
         if self.parameters["regex_pattern"]:
@@ -196,14 +221,17 @@ class DocumentProcessor:
             self.pipeline.add_module(SuperSubScriptRemovalModule())
         if self.parameters["normalize_spacing"]:
             self.pipeline.add_module(WhitespaceNormalizationModule())
+
     def get_parameters(self):
         return self.parameters
+
     def process_file(self, text):
         for module in self.pipeline.modules:
             text = module.process(text)
             if isinstance(text, list):
                 text = ' '.join(text)
         return text
+
 
 class ProcessingWorker(QRunnable):
     def __init__(self, processor, file_path, signals):
@@ -212,6 +240,7 @@ class ProcessingWorker(QRunnable):
         self.file_path = file_path
         self.signals = signals
         self.setAutoDelete(True)
+
     def run(self):
         try:
             file_size = os.path.getsize(self.file_path)
@@ -222,10 +251,15 @@ class ProcessingWorker(QRunnable):
             end_time = time.time()
             processing_time = end_time - start_time
             self.signals.result.emit(self.file_path, processed_text, file_size, processing_time)
+        except FileNotFoundError as e:
+            self.signals.error.emit(self.file_path, f"File not found: {str(e)}")
+        except IOError as e:
+            self.signals.error.emit(self.file_path, f"I/O error: {str(e)}")
         except Exception as e:
-            self.signals.error.emit(self.file_path, str(e))
+            self.signals.error.emit(self.file_path, f"Unexpected error: {str(e)}")
         finally:
             self.signals.finished.emit()
+
 
 class ProcessingSignals(QObject):
     result = Signal(str, str, int, float)
@@ -236,13 +270,16 @@ class ProcessingSignals(QObject):
     processing_complete = Signal(list, list)
     report_ready = Signal(str, str)
 
+
 class FileManager:
     def __init__(self):
         self.files = []
+
     def add_files(self, file_paths):
         new_files = [os.path.normpath(f) for f in file_paths if os.path.normpath(f) not in self.files]
         self.files.extend(new_files)
         return new_files
+
     def add_directory(self, directory, signals):
         new_files = []
         total_files = 0
@@ -264,39 +301,50 @@ class FileManager:
                             elapsed_time = time.time() - start_time
                             estimated_remaining_time = (elapsed_time / processed_files) * (total_files - processed_files) if processed_files > 0 else 0
                             signals.update_progress.emit(processed_files, total_files, estimated_remaining_time, None)
+                        except OSError as e:
+                            signals.update_progress.emit(processed_files, total_files, 0, f"OS error: {str(e)}")
                         except Exception as e:
-                            signals.update_progress.emit(processed_files, total_files, 0, str(e))
+                            signals.update_progress.emit(processed_files, total_files, 0, f"Unexpected error: {str(e)}")
         return new_files
+
     def remove_files(self, file_paths):
         for file in file_paths:
             if file in self.files:
                 self.files.remove(file)
+
     def clear_files(self):
         self.files.clear()
+
     def get_files(self):
         return self.files
+
     def get_total_size(self):
         return sum(os.path.getsize(file) for file in self.files)
+
 
 class FileListWidget(QListWidget):
     files_added = Signal(list)
     files_removed = Signal(list)
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setAcceptDrops(True)
         self.setSelectionMode(QListWidget.ExtendedSelection)
         self.setDragDropMode(QListWidget.InternalMove)
+
     def dragEnterEvent(self, event):
         if event.mimeData().hasUrls():
             event.acceptProposedAction()
         else:
             super().dragEnterEvent(event)
+
     def dragMoveEvent(self, event):
         if event.mimeData().hasUrls():
             event.setDropAction(Qt.CopyAction)
             event.accept()
         else:
             super().dragMoveEvent(event)
+
     def dropEvent(self, event):
         if event.mimeData().hasUrls():
             event.setDropAction(Qt.CopyAction)
@@ -314,6 +362,7 @@ class FileListWidget(QListWidget):
             if source_row != destination_row:
                 item = self.takeItem(source_row)
                 self.insertItem(destination_row, item)
+
     def keyPressEvent(self, event):
         if event.key() == Qt.Key_Delete:
             selected_items = self.selectedItems()
@@ -322,6 +371,7 @@ class FileListWidget(QListWidget):
             self.files_removed.emit([item.text() for item in selected_items])
         else:
             super().keyPressEvent(event)
+
 
 class ThemeManager:
     def __init__(self):
@@ -335,13 +385,16 @@ class ThemeManager:
             "icon_dark": "#FFFFFF",
             "icon_light": "#000000"
         }
+
     def toggle_theme(self):
         self.dark_theme = not self.dark_theme
+
     def get_stylesheet(self):
         if self.dark_theme:
             return self._get_dark_stylesheet()
         else:
             return self._get_light_stylesheet()
+
     def _get_dark_stylesheet(self):
         return f"""
             QMainWindow, QWidget {{
@@ -390,6 +443,7 @@ class ThemeManager:
                 background: {self.custom_colors['primary']};
             }}
         """
+
     def _get_light_stylesheet(self):
         return f"""
             QMainWindow, QWidget {{
@@ -440,9 +494,11 @@ class ThemeManager:
                 color: #FFFFFF;
             }}
         """
+
     def update_color(self, color_key, color_value):
         if color_key in self.custom_colors:
             self.custom_colors[color_key] = color_value
+
 
 class AdvancedPatternBuilder(QWizard):
     def __init__(self, parent=None):
@@ -507,7 +563,8 @@ class AdvancedPatternBuilder(QWizard):
         end_edit = QLineEdit()
         self.pattern_table.setCellWidget(row_position, 2, end_edit)
         number_length_edit = QLineEdit()
-        number_length_edit.setValidator(QIntValidator())
+        number_length_validator = QIntValidator(1, 100, self)
+        number_length_edit.setValidator(number_length_validator)
         number_length_edit.setEnabled(False)
         self.pattern_table.setCellWidget(row_position, 3, number_length_edit)
 
@@ -542,47 +599,54 @@ class AdvancedPatternBuilder(QWizard):
         return pattern_data
 
     def updatePattern(self):
-        pattern_data = self.getPatternData()
-        patterns = []
-        for data in pattern_data:
-            start = re.escape(data["start"])
-            if data["end_type"] == "Single Number":
-                end = r'\d'
-            elif data["end_type"] == "Multiple Numbers":
-                end = r'\d{' + data["number_length"] + '}'
-            else:
-                end = re.escape(data["end"])
-            patterns.append(rf"{start}.*?{end}")
-        final_pattern = '|'.join(patterns)
-        if self.whole_words.isChecked():
-            final_pattern = rf"\b({final_pattern})\b"
-        flags = re.DOTALL | (0 if self.case_sensitive.isChecked() else re.IGNORECASE)
-        self.final_pattern = re.compile(final_pattern, flags)
-        self.pattern_preview.setText(final_pattern)
-        self.explanation.setText(f"This pattern will match: {', '.join(patterns)}")
+        try:
+            pattern_data = self.getPatternData()
+            patterns = []
+            for data in pattern_data:
+                start = re.escape(data["start"])
+                if data["end_type"] == "Single Number":
+                    end = r'\d'
+                elif data["end_type"] == "Multiple Numbers":
+                    end = r'\d{' + data["number_length"] + '}'
+                else:
+                    end = re.escape(data["end"])
+                patterns.append(rf"{start}.*?{end}")
+            final_pattern = '|'.join(patterns)
+            if self.whole_words.isChecked():
+                final_pattern = rf"\b({final_pattern})\b"
+            flags = re.DOTALL | (0 if self.case_sensitive.isChecked() else re.IGNORECASE)
+            self.final_pattern = re.compile(final_pattern, flags)
+            self.pattern_preview.setText(final_pattern)
+            self.explanation.setText(f"This pattern will match: {', '.join(patterns)}")
+        except re.error as e:
+            QMessageBox.warning(self, "Invalid Pattern", f"The entered pattern is invalid:\n{str(e)}")
 
     def testPattern(self):
         self.updatePattern()
         text = self.test_input.toPlainText()
-        matches = list(self.final_pattern.finditer(text))
-        cursor = self.test_input.textCursor()
-        text_format = QTextCharFormat()
-        text_format.setBackground(Qt.yellow)
-        cursor.beginEditBlock()
-        cursor.select(QTextCursor.Document)
-        cursor.setCharFormat(QTextCharFormat())
-        cursor.clearSelection()
-        for match in matches:
-            cursor.setPosition(match.start())
-            cursor.setPosition(match.end(), QTextCursor.KeepAnchor)
-            cursor.setCharFormat(text_format)
-        cursor.endEditBlock()
-        if not matches:
-            QMessageBox.warning(self, "No Matches", "The pattern did not match any text in the sample.")
+        try:
+            matches = list(self.final_pattern.finditer(text))
+            cursor = self.test_input.textCursor()
+            text_format = QTextCharFormat()
+            text_format.setBackground(Qt.yellow)
+            cursor.beginEditBlock()
+            cursor.select(QTextCursor.Document)
+            cursor.setCharFormat(QTextCharFormat())
+            cursor.clearSelection()
+            for match in matches:
+                cursor.setPosition(match.start())
+                cursor.setPosition(match.end(), QTextCursor.KeepAnchor)
+                cursor.setCharFormat(text_format)
+            cursor.endEditBlock()
+            if not matches:
+                QMessageBox.information(self, "No Matches", "The pattern did not match any text in the sample.")
+        except Exception as e:
+            QMessageBox.warning(self, "Error", f"An error occurred while testing the pattern:\n{str(e)}")
 
     def getPattern(self):
         self.updatePattern()
         return self.final_pattern
+
 
 class ParametersDialog(QDialog):
     def __init__(self, current_parameters, parent=None):
@@ -592,11 +656,15 @@ class ParametersDialog(QDialog):
         layout = QVBoxLayout(self)
         self.parameters = current_parameters.copy()
         self.pattern_data = self.parameters.get("pattern_data", [])
-        scroll_area = QScrollArea()
-        scroll_area.setWidgetResizable(True)
-        content_widget = QWidget()
-        scroll_area.setWidget(content_widget)
-        content_layout = QVBoxLayout(content_widget)
+
+        # Create tabs
+        tabs = QTabWidget()
+        general_tab = QWidget()
+        general_layout = QVBoxLayout(general_tab)
+        advanced_tab = QWidget()
+        advanced_layout = QVBoxLayout(advanced_tab)
+
+        # General options
         options = [
             ("remove_break_lines", "Remove break lines"),
             ("lowercase", "Lowercase"),
@@ -612,18 +680,28 @@ class ParametersDialog(QDialog):
             checkbox = QCheckBox(label)
             checkbox.setChecked(self.parameters.get(key, False))
             checkbox.stateChanged.connect(lambda state, k=key: self.parameters.update({k: bool(state)}))
-            content_layout.addWidget(checkbox)
+            checkbox.setToolTip(f"Enable or disable {label.lower()}")
+            general_layout.addWidget(checkbox)
+
+        # Advanced options
         regex_button = QPushButton("Set Pattern")
         regex_button.clicked.connect(self.open_regex_dialog)
-        content_layout.addWidget(regex_button)
+        regex_button.setToolTip("Define advanced regex patterns")
+        advanced_layout.addWidget(regex_button)
         self.regex_label = QLabel("Current pattern: " + self.parameters.get("regex_pattern", "None"))
-        content_layout.addWidget(self.regex_label)
+        advanced_layout.addWidget(self.regex_label)
         char_remove_button = QPushButton("Select Characters to Remove")
         char_remove_button.clicked.connect(self.open_char_selection)
-        content_layout.addWidget(char_remove_button)
+        char_remove_button.setToolTip("Select specific characters or sequences to remove")
+        advanced_layout.addWidget(char_remove_button)
         self.selected_chars_label = QLabel("Selected items: " + ', '.join(self.parameters.get("chars_to_remove", [])))
-        content_layout.addWidget(self.selected_chars_label)
-        layout.addWidget(scroll_area)
+        advanced_layout.addWidget(self.selected_chars_label)
+
+        # Add tabs to the dialog
+        tabs.addTab(general_tab, "General")
+        tabs.addTab(advanced_tab, "Advanced")
+        layout.addWidget(tabs)
+
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
@@ -648,8 +726,8 @@ class ParametersDialog(QDialog):
                     self.regex_label.setText("Current pattern: " + pattern.pattern)
                     self.pattern_data = dialog.getPatternData()
                     self.parameters["pattern_data"] = self.pattern_data
-                except re.error:
-                    QMessageBox.warning(self, "Invalid Pattern", "The entered pattern is invalid.")
+                except re.error as e:
+                    QMessageBox.warning(self, "Invalid Pattern", f"The entered pattern is invalid:\n{str(e)}")
 
     def open_char_selection(self):
         dialog = CharacterSelectionDialog(self.parameters.get("chars_to_remove", []), self)
@@ -660,6 +738,7 @@ class ParametersDialog(QDialog):
     def get_parameters(self):
         return self.parameters
 
+
 class CharacterSelectionDialog(QDialog):
     def __init__(self, current_chars, parent=None):
         super().__init__(parent)
@@ -667,25 +746,48 @@ class CharacterSelectionDialog(QDialog):
         self.setMinimumSize(400, 300)
         layout = QVBoxLayout(self)
         self.selected_chars = list(current_chars)
+
+        # Input layout
         input_layout = QHBoxLayout()
         self.char_input = QLineEdit()
         self.char_input.setPlaceholderText("Enter characters or sequences to remove")
         input_layout.addWidget(self.char_input)
+
+        # Include button
         include_button = QPushButton("Include")
         include_button.clicked.connect(self.add_chars)
+        include_button.setDefault(True)  # Set 'Include' as the default button
         input_layout.addWidget(include_button)
         layout.addLayout(input_layout)
+
+        # Character list
         self.char_list = QListWidget()
         self.update_char_list()
         layout.addWidget(QLabel("Items to remove:"))
         layout.addWidget(self.char_list)
+
+        # Delete button
         delete_button = QPushButton("Delete Selected")
         delete_button.clicked.connect(self.delete_selected)
         layout.addWidget(delete_button)
+
+        # Dialog buttons
         button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         button_box.accepted.connect(self.accept)
         button_box.rejected.connect(self.reject)
         layout.addWidget(button_box)
+
+        # Disable default behavior for 'OK' and 'Cancel' buttons
+        ok_button = button_box.button(QDialogButtonBox.Ok)
+        if ok_button:
+            ok_button.setAutoDefault(False)
+            ok_button.setDefault(False)
+        cancel_button = button_box.button(QDialogButtonBox.Cancel)
+        if cancel_button:
+            cancel_button.setAutoDefault(False)
+            cancel_button.setDefault(False)
+
+        # Connect 'Enter' key in QLineEdit to 'add_chars' method
         self.char_input.returnPressed.connect(self.add_chars)
 
     def add_chars(self):
@@ -708,6 +810,7 @@ class CharacterSelectionDialog(QDialog):
 
     def get_selected_chars(self):
         return self.selected_chars
+
 
 class FileLoadingDialog(QDialog):
     def __init__(self, parent=None, title="Loading Files..."):
@@ -733,7 +836,8 @@ class FileLoadingDialog(QDialog):
         else:
             self.label.setText(f"Processing file {current} of {total}...")
         if error:
-            QMessageBox.warning(self, "Error", f"Error loading a file: {error}")
+            # Display error in log area instead of modal dialog
+            pass
 
     def accept(self):
         pass
@@ -741,8 +845,10 @@ class FileLoadingDialog(QDialog):
     def reject(self):
         super().reject()
 
+
 class DirectoryLoadingWorker(QObject):
     finished = Signal(list)
+
     def __init__(self, file_manager, directory, signals):
         super().__init__()
         self.file_manager = file_manager
@@ -753,8 +859,10 @@ class DirectoryLoadingWorker(QObject):
         new_files = self.file_manager.add_directory(self.directory, self.signals)
         self.finished.emit(new_files)
 
+
 class ReportWorker(QObject):
     finished = Signal(str, str)
+
     def __init__(self, files, processed=False, processed_results=None):
         super().__init__()
         self.files = files
@@ -804,10 +912,11 @@ class ReportWorker(QObject):
         corpus_report += "</ul>"
         self.finished.emit(files_report, corpus_report)
 
+
 class PreprocessorGUI(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.version = "0.1"  # Added version attribute
+        self.version = "0.1"
         self.file_manager = FileManager()
         self.theme_manager = ThemeManager()
         self.processor = DocumentProcessor()
@@ -825,15 +934,19 @@ class PreprocessorGUI(QMainWindow):
         self.processed_size = 0
         self.documentation_window = None
         self.report_thread = QThread()
+        self.lock = Lock()
         self.init_ui()
         ensure_nltk_data()
-        # self.check_for_updates()
 
     def init_ui(self):
         self.setWindowTitle('CorpuScript')
         self.setGeometry(100, 100, 1200, 800)
         self.setFont(QFont("Roboto", 10))
-        self.setWindowIcon(QIcon(resource_path("my_icon.ico")))
+        icon_path = resource_path("my_icon.ico")
+        if os.path.exists(icon_path):
+            self.setWindowIcon(QIcon(icon_path))
+        else:
+            logging.warning(f"Icon file not found at {icon_path}. Using default icon.")
         self.create_menu_bar()
         self.create_toolbar()
         self.setup_central_widget()
@@ -864,7 +977,6 @@ class PreprocessorGUI(QMainWindow):
         help_menu = menu_bar.addMenu("&Help")
         help_menu.addAction(self.create_action("About", "help-about", "", "About this application", self.show_about_dialog))
         help_menu.addAction(self.create_action("Documentation", "help-contents", "F1", "View documentation", self.show_documentation))
-        # help_menu.addAction(self.create_action("Check for Updates", "system-software-update", "", "Check for updates", self.check_for_updates))
 
     def create_toolbar(self):
         self.toolbar = QToolBar()
@@ -876,7 +988,7 @@ class PreprocessorGUI(QMainWindow):
         self.toolbar.addSeparator()
         process_button = QPushButton("Process Files")
         process_button.setIcon(QIcon.fromTheme("system-run"))
-        process_button.setToolTip("Process selected files")
+        process_button.setToolTip("Process the selected files with current parameters")
         process_button.clicked.connect(self.process_files)
         self.toolbar.addWidget(process_button)
 
@@ -906,10 +1018,15 @@ class PreprocessorGUI(QMainWindow):
         self.file_list.files_added.connect(lambda files: self.update_report())
         file_list_layout.addWidget(self.file_list)
         report_widget = self.create_report_area()
+        self.file_list.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         left_layout.addWidget(file_list_widget)
         left_layout.addWidget(report_widget)
         text_display = QWidget()
         text_layout = QVBoxLayout(text_display)
+        
+        left_panel.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
+        left_panel.setMinimumWidth(300)
+
         self.text_tabs = QTabWidget()
         self.original_text = QPlainTextEdit()
         self.processed_text = QPlainTextEdit()
@@ -928,6 +1045,10 @@ class PreprocessorGUI(QMainWindow):
         splitter = QSplitter(Qt.Horizontal)
         splitter.addWidget(left_panel)
         splitter.addWidget(text_display)
+        # Set initial sizes for the splitter
+        splitter.setSizes([890, 1000])  # Adjust these values as needed
+        splitter.setStretchFactor(0, 4)  # Left panel
+        splitter.setStretchFactor(1, 5)  # Right panel
         main_layout.addWidget(splitter)
         self.setCentralWidget(central_widget)
 
@@ -958,6 +1079,11 @@ class PreprocessorGUI(QMainWindow):
         self.progress_bar = QProgressBar()
         self.progress_bar.setMaximumWidth(200)
         self.status_bar.addPermanentWidget(self.progress_bar)
+        self.log_area = QTextEdit()
+        self.log_area.setReadOnly(True)
+        self.log_area.setMaximumHeight(100)
+        self.log_area.hide()
+        self.status_bar.addPermanentWidget(self.log_area)
         self.update_status_bar()
 
     def apply_theme(self):
@@ -1018,16 +1144,28 @@ class PreprocessorGUI(QMainWindow):
         self.update_report()
 
     def save_file(self):
-        if self.current_file and self.processed_text.toPlainText():
-            try:
-                with open(self.current_file, 'w', encoding='utf-8') as file:
-                    file.write(self.processed_text.toPlainText())
-                QMessageBox.information(self, 'Save Successful', f"File saved successfully: {self.current_file}")
-            except Exception as e:
-                logging.error(f"Error saving file {self.current_file}: {str(e)}")
-                QMessageBox.warning(self, 'Save Failed', f"Failed to save file: {str(e)}")
+        if self.processed_results:
+            reply = QMessageBox.question(
+                self, 'Confirm Save',
+                "This will overwrite the original files. Do you want to proceed?",
+                QMessageBox.Yes | QMessageBox.No, QMessageBox.No
+            )
+            if reply == QMessageBox.Yes:
+                failed_files = []
+                for file_path, processed_text in self.processed_results:
+                    try:
+                        with open(file_path, 'w', encoding='utf-8') as file:
+                            file.write(processed_text)
+                    except Exception as e:
+                        logging.error(f"Error saving file {file_path}: {str(e)}")
+                        failed_files.append(file_path)
+                if failed_files:
+                    QMessageBox.warning(self, 'Save Completed with Errors',
+                                        f"Some files could not be saved:\n{', '.join(failed_files)}")
+                else:
+                    QMessageBox.information(self, 'Save Successful', "All files have been saved successfully.")
         else:
-            QMessageBox.warning(self, 'Save Failed', "No processed file to save.")
+            QMessageBox.warning(self, 'Save Failed', "No processed files to save.")
 
     def process_files(self):
         logging.debug("PreprocessorGUI: Process files function called")
@@ -1051,34 +1189,51 @@ class PreprocessorGUI(QMainWindow):
             worker = ProcessingWorker(self.processor, file, self.signals)
             self.thread_pool.start(worker)
 
-    def handle_result(self, file_path, processed_text, file_size, processing_time):
-        self.processed_results.append((file_path, processed_text))
-        self.total_time += processing_time
-        self.files_processed += 1
-        self.processed_size += file_size
-        if len(self.file_manager.get_files()) > 0:
-            if self.files_processed % 10 == 0 or (self.files_processed / len(self.file_manager.get_files())) * 100 >= self.progress_bar.value() + 1:
-                progress = (self.files_processed / len(self.file_manager.get_files())) * 100
-                avg_speed = self.processed_size / self.total_time if self.total_time > 0 else 0
-                remaining_time = (self.total_size - self.processed_size) / avg_speed if avg_speed > 0 else 0
-                self.signals.update_progress.emit(self.files_processed, len(self.file_manager.get_files()), remaining_time, None)
-
-    def handle_error(self, file_path, error):
-        self.errors.append((file_path, error))
-        self.files_processed += 1
-        self.signals.update_progress.emit(self.files_processed, len(self.file_manager.get_files()), 0, error)
-
-    def handle_warning(self, file_path, warning):
-        self.warnings.append((file_path, warning))
-        self.files_processed += 1
-        self.signals.update_progress.emit(self.files_processed, len(self.file_manager.get_files()), 0, None)
-
-    def update_progress(self, current, total, time_remaining, error):
-        self.files_processed = current
-        progress = (self.files_processed / total) * 100 if total > 0 else 0
+    def update_progress_info(self, message=None, error=None):
+        progress = (self.files_processed / len(self.file_manager.get_files())) * 100 if self.file_manager.get_files() else 0
         self.progress_bar.setValue(int(progress))
         avg_speed = self.processed_size / self.total_time if self.total_time > 0 else 0
-        self.status_bar.showMessage(f"Progress: {progress:.2f}% | Avg. Speed: {avg_speed:.2f} B/s | Est. Remaining Time: {time_remaining:.2f}s")
+        status_message = f"Progress: {progress:.2f}% | Avg. Speed: {avg_speed:.2f} B/s"
+        if message:
+            status_message += f" | {message}"
+        if error:
+            status_message += f" | Error: {error}"
+        self.status_bar.showMessage(status_message)
+
+    def handle_result(self, file_path, processed_text, file_size, processing_time):
+        with self.lock:
+            self.processed_results.append((file_path, processed_text))
+            self.total_time += processing_time
+            self.files_processed += 1
+            self.processed_size += file_size
+        remaining_files = len(self.file_manager.get_files()) - self.files_processed
+        self.update_progress_info(message=f"Processed {os.path.basename(file_path)} | Remaining files: {remaining_files}")
+
+    def handle_error(self, file_path, error):
+        with self.lock:
+            self.errors.append((file_path, error))
+            self.files_processed += 1
+        remaining_files = len(self.file_manager.get_files()) - self.files_processed
+        self.update_progress_info(error=f"Error in {os.path.basename(file_path)} | Remaining files: {remaining_files}")
+        self.log_area.append(f"Error processing {file_path}: {error}")
+        self.log_area.show()
+
+    def handle_warning(self, file_path, warning):
+        with self.lock:
+            self.warnings.append((file_path, warning))
+            self.files_processed += 1
+        remaining_files = len(self.file_manager.get_files()) - self.files_processed
+        self.update_progress_info(message=f"Warning in {os.path.basename(file_path)} | Remaining files: {remaining_files}")
+        self.log_area.append(f"Warning processing {file_path}: {warning}")
+        self.log_area.show()
+
+    def update_progress(self, current, total, time_remaining, error):
+        with self.lock:
+            self.files_processed = current
+        self.update_progress_info()
+        if error:
+            self.log_area.append(f"Error: {error}")
+            self.log_area.show()
 
     def on_worker_finished(self):
         logging.debug("Worker finished")
@@ -1086,7 +1241,8 @@ class PreprocessorGUI(QMainWindow):
             self.signals.processing_complete.emit(self.processed_results, self.warnings)
             if self.errors:
                 error_msg = "\n".join([f"{file}: {error}" for file, error in self.errors])
-                QMessageBox.warning(self, "Processing Errors", f"Errors occurred during processing:\n\n{error_msg}")
+                self.log_area.append(f"Errors occurred during processing:\n\n{error_msg}")
+                self.log_area.show()
             self.update_status_bar()
             self.processing_dialog.close()
             self.display_results(self.processed_results, self.warnings)
@@ -1098,15 +1254,19 @@ class PreprocessorGUI(QMainWindow):
             self.original_text.clear()
             self.processed_text.clear()
             for file_path, processed_text in results:
-                with open(file_path, 'r', encoding='utf-8', errors='ignore') as file:
-                    original_text = file.read()
-                self.original_text.appendPlainText(f"File: {file_path}\n\n{original_text}\n\n")
-                self.processed_text.appendPlainText(f"File: {file_path}\n\n{processed_text}\n\n")
+                try:
+                    with open(file_path, 'r', encoding='utf-8', errors='ignore') as file:
+                        original_text = file.read()
+                    self.original_text.appendPlainText(f"File: {file_path}\n\n{original_text}\n\n")
+                    self.processed_text.appendPlainText(f"File: {file_path}\n\n{processed_text}\n\n")
+                except Exception as e:
+                    self.log_area.append(f"Error reading file {file_path}: {str(e)}")
+                    self.log_area.show()
             self.current_file = results[0][0]
         if warnings:
             warning_msg = "\n".join([f"{file}: {warning}" for file, warning in warnings])
-            QMessageBox.information(self, "Processing Warnings",
-                                    f"The following files were skipped or had issues:\n\n{warning_msg}")
+            self.log_area.append(f"Warnings during processing:\n\n{warning_msg}")
+            self.log_area.show()
 
     def start_new_cleaning(self):
         self.file_manager.clear_files()
@@ -1190,18 +1350,6 @@ class PreprocessorGUI(QMainWindow):
         self.files_report_text.setHtml(files_report)
         self.corpus_report_text.setHtml(corpus_report)
 
-    # def check_for_updates(self):
-    #     self.update_checker = UpdateChecker(self.version)
-    #     self.update_checker.update_available.connect(self.show_update_dialog)
-    #     self.update_checker.error.connect(lambda e: logging.error(f"Update check failed: {e}"))
-    #     self.update_checker.start()
-
-    # def show_update_dialog(self, latest_version):
-    #     reply = QMessageBox.question(self, "Update Available",
-    #                                 f"A new version ({latest_version}) is available. Would you like to download it?",
-    #                                 QMessageBox.Yes | QMessageBox.No)
-    #     if reply == QMessageBox.Yes:
-    #         QDesktopServices.openUrl(QUrl("https://github.com/YourUsername/CorpuScript/releases/latest"))
 
 def main():
     # Setup logging to a 'logs' directory
@@ -1221,13 +1369,17 @@ def main():
     try:
         app = QApplication(sys.argv)
         icon_path = resource_path("my_icon.ico")
-        app.setWindowIcon(QIcon(icon_path))
-        window = PreprocessorGUI()  # Corrected line
+        if os.path.exists(icon_path):
+            app.setWindowIcon(QIcon(icon_path))
+        else:
+            logging.warning(f"Icon file not found at {icon_path}. Using default icon.")
+        window = PreprocessorGUI()
         window.show()
         logging.info("Main window shown.")
         sys.exit(app.exec())
     except Exception as e:
         logging.exception("An error occurred: %s", e)
+
 
 if __name__ == "__main__":
     main()
