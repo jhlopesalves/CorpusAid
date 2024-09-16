@@ -19,7 +19,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, Signal, QObject, QThread, QSize, QRunnable, QThreadPool, QUrl, QTimer
 from PySide6.QtGui import (
     QIcon, QFont, QColor, QAction, QPainter, QIntValidator,
-    QTextOption, QTextCursor, QTextCharFormat, QSyntaxHighlighter, QDesktopServices
+    QTextOption, QTextCursor, QTextCharFormat, QSyntaxHighlighter, QDesktopServices, QKeySequence
 )
 from bs4 import BeautifulSoup
 from collections import Counter
@@ -988,6 +988,7 @@ class PreprocessorGUI(QMainWindow):
         ensure_nltk_data()
 
     def init_ui(self):
+        self.setFocusPolicy(Qt.StrongFocus)
         self.setWindowTitle('CorpuScript')
         self.setGeometry(100, 100, 1200, 800)
         self.setFont(QFont("Roboto", 10))
@@ -1028,30 +1029,45 @@ class PreprocessorGUI(QMainWindow):
     def create_menu_bar(self):
         menu_bar = self.menuBar()
         file_menu = menu_bar.addMenu("&File")
-        file_menu.addAction(self.create_action("New", "document-new", "Ctrl+N", "Start a new project", self.start_new_cleaning))
-        file_menu.addAction(self.create_action("Open Files", "document-open", "Ctrl+O", "Open files", self.open_file))
-        file_menu.addAction(self.create_action("Open Directory", "folder-open", "Ctrl+Shift+O", "Open directory", self.open_directory))
-        file_menu.addAction(self.create_action("Save", "document-save", "Ctrl+S", "Save current file", self.save_file))
+        self.new_action = self.create_action("New", "document-new", "Ctrl+N", "Start a new project", self.start_new_cleaning)
+        file_menu.addAction(self.new_action)
+        self.open_files_action = self.create_action("Open Files", "document-open", "Ctrl+O", "Open files", self.open_file)
+        file_menu.addAction(self.open_files_action)
+        self.open_directory_action = self.create_action("Open Directory", "folder-open", "Ctrl+Shift+O", "Open directory", self.open_directory)
+        file_menu.addAction(self.open_directory_action)
+        self.save_action = self.create_action("Save", "document-save", "Ctrl+S", "Save current file", self.save_file)
+        file_menu.addAction(self.save_action)
         file_menu.addSeparator()
-        file_menu.addAction(self.create_action("Exit", "application-exit", "Ctrl+Q", "Exit the application", self.close))
+        self.exit_action = self.create_action("Exit", "application-exit", "Ctrl+Q", "Exit the application", self.close)
+        file_menu.addAction(self.exit_action)
+
         edit_menu = menu_bar.addMenu("&Edit")
-        edit_menu.addAction(self.create_action("Undo", "edit-undo", "Ctrl+Z", "Undo last action", self.undo))
-        edit_menu.addAction(self.create_action("Redo", "edit-redo", "Ctrl+Y", "Redo last action", self.redo))
+        self.undo_action = self.create_action("Undo", "edit-undo", "Ctrl+Z", "Undo last action", self.undo)
+        edit_menu.addAction(self.undo_action)
+        self.redo_action = self.create_action("Redo", "edit-redo", "Ctrl+Y", "Redo last action", self.redo)
+        edit_menu.addAction(self.redo_action)
+
         settings_menu = menu_bar.addMenu("&Settings")
-        settings_menu.addAction(self.create_action("Toggle Theme", "preferences-desktop-theme", "", "Switch between light and dark theme", self.toggle_theme))
-        settings_menu.addAction(self.create_action("Processing Parameters", "preferences-system", "", "Configure processing options", self.open_parameters_dialog))
+        self.toggle_theme_action = self.create_action("Toggle Theme", "preferences-desktop-theme", "", "Switch between light and dark theme", self.toggle_theme)
+        settings_menu.addAction(self.toggle_theme_action)
+        self.processing_parameters_action = self.create_action("Processing Parameters", "preferences-system", "", "Configure processing options", self.open_parameters_dialog)
+        settings_menu.addAction(self.processing_parameters_action)
+
         help_menu = menu_bar.addMenu("&Help")
-        help_menu.addAction(self.create_action("About", "help-about", "", "About this application", self.show_about_dialog))
-        help_menu.addAction(self.create_action("Documentation", "help-contents", "F1", "View documentation", self.show_documentation))
-        help_menu.addAction(self.create_action("Check for Updates", "system-software-update", "", "Check for updates", lambda: self.check_for_updates(manual_trigger=True)))
+        self.about_action = self.create_action("About", "help-about", "", "About this application", self.show_about_dialog)
+        help_menu.addAction(self.about_action)
+        self.documentation_action = self.create_action("Documentation", "help-contents", "F1", "View documentation", self.show_documentation)
+        help_menu.addAction(self.documentation_action)
+        self.check_updates_action = self.create_action("Check for Updates", "system-software-update", "", "Check for updates", lambda: self.check_for_updates(manual_trigger=True))
+        help_menu.addAction(self.check_updates_action)
 
     def create_toolbar(self):
         self.toolbar = QToolBar()
         self.addToolBar(self.toolbar)
-        self.toolbar.addAction(self.create_action("New", "document-new", "Ctrl+Shift+N", "Start a new project", self.start_new_cleaning))
-        self.toolbar.addAction(self.create_action("Open Files", "document-open", "Ctrl+O", "Open files", self.open_file))
-        self.toolbar.addAction(self.create_action("Open Directory", "folder-open", "Ctrl+Shift+O", "Open directory", self.open_directory))
-        self.toolbar.addAction(self.create_action("Save", "document-save", "Ctrl+S", "Save current file", self.save_file))
+        self.toolbar.addAction(self.new_action)
+        self.toolbar.addAction(self.open_files_action)
+        self.toolbar.addAction(self.open_directory_action)
+        self.toolbar.addAction(self.save_action)
         self.toolbar.addSeparator()
         process_button = QPushButton("Process Files")
         process_button.setIcon(QIcon.fromTheme("system-run"))
@@ -1061,7 +1077,11 @@ class PreprocessorGUI(QMainWindow):
 
     def create_action(self, text, icon, shortcut, tooltip, callback):
         action = QAction(QIcon.fromTheme(icon, QIcon()), text, self)
-        action.setShortcut(shortcut)
+        if shortcut:
+            if sys.platform == "darwin":
+                shortcut = shortcut.replace("Ctrl", "Meta")
+            action.setShortcut(QKeySequence(shortcut))
+            action.setShortcutContext(Qt.ApplicationShortcut)
         action.setToolTip(tooltip)
         action.triggered.connect(callback)
         return action
