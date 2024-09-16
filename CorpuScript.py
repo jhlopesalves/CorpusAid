@@ -33,7 +33,6 @@ def resource_path(relative_path):
         base_path = os.path.dirname(os.path.abspath(__file__))
     return os.path.join(base_path, relative_path)
 
-
 def ensure_nltk_data():
     import nltk
     if getattr(sys, 'frozen', False):
@@ -87,7 +86,6 @@ class WhitespaceNormalizationModule(PreprocessingModule):
 class LineBreakRemovalModule(PreprocessingModule):
     def process(self, text):
         return re.sub(r'\n', ' ', text)
-
 
 class LowercaseModule(PreprocessingModule):
     def process(self, text):
@@ -439,7 +437,7 @@ class ThemeManager:
                 background: {self.custom_colors['primary']};
             }}
         """
-
+    
     def _get_light_stylesheet(self):
         return f"""
             QMainWindow, QWidget {{
@@ -490,7 +488,6 @@ class ThemeManager:
                 color: #FFFFFF;
             }}
         """
-
     def update_color(self, color_key, color_value):
         if color_key in self.custom_colors:
             self.custom_colors[color_key] = color_value
