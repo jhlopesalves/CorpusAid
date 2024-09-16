@@ -64,19 +64,24 @@ class CharacterFilterModule(PreprocessingModule):
 
 class WhitespaceNormalizationModule(PreprocessingModule):
     def process(self, text):
+        # Remove unnecessary spaces before punctuation
         text = re.sub(r'\s+([.,?!;:])', r'\1', text)
-        text = re.sub(r'\s*([.,?!;:])\s*', r'\1 ', text)
-        text = re.sub(r'\s*([\[\]{}\(\)/])\s*', r' \1 ', text)
-        text = re.sub(r'(\d)\s*([%$£€])', r'\1\2', text)
-        text = re.sub(r'(\d)\s*([a-zA-Z])', r'\1 \2', text)
-        text = re.sub(r'\s*([+\-*/=])\s*', r' \1 ', text)
-        text = re.sub(r'\s{2,}', ' ', text)
+
+        # Ensure a single space after punctuation
+        text = re.sub(r'([.,?!;:])(\S)', r'\1 \2', text)
+
+        # Remove unnecessary spaces inside parentheses/brackets/braces
         text = re.sub(r'\(\s+', '(', text)
         text = re.sub(r'\s+\)', ')', text)
-        text = re.sub(r'([a-zA-Z])\s+([%$£€])', r'\1\2', text)
-        text = re.sub(r'([%$£€])\s+(\d)', r'\1\2', text)
-        text = re.sub(r'(\d)\s+([.,?!;:])', r'\1\2', text)
-        text = re.sub(r'\s+', ' ', text)
+        text = re.sub(r'\[\s+', '[', text)
+        text = re.sub(r'\s+\]', ']', text)
+        text = re.sub(r'\{\s+', '{', text)
+        text = re.sub(r'\s+\}', '}', text)
+
+        # Remove multiple spaces
+        text = re.sub(r'\s{2,}', ' ', text)
+        
+        # Strip leading and trailing spaces
         return text.strip()
 
 class LineBreakRemovalModule(PreprocessingModule):
@@ -602,14 +607,24 @@ class AdvancedPatternBuilder(QWizard):
                 start = re.escape(data["start"])
                 if data["end_type"] == "Single Number":
                     end = r'\d'
+                    pattern = rf"{start}[^{re.escape(end)}]*?{end}"
                 elif data["end_type"] == "Multiple Numbers":
                     end = r'\d{' + data["number_length"] + '}'
-                else:
+                    pattern = rf"{start}[^{re.escape(end[-1])}]*?{end}"
+                else:  # Specific Word
                     end = re.escape(data["end"])
-                patterns.append(rf"{start}.*?{end}")
+                    # Determine the end character for the negated character class
+                    if (end.endswith('\\)') or end.endswith('\\]') or end.endswith('\\}')) and len(end) >= 2:
+                        end_char = end[-2:]  # Get the escaped closing character
+                        pattern = rf"{start}[^{end_char}]*?{end}"
+                    else:
+                        # If the end character is not a bracket, use any character including newlines
+                        pattern = rf"{start}.*?{end}"
+                patterns.append(pattern)
             final_pattern = '|'.join(patterns)
             if self.whole_words.isChecked():
                 final_pattern = rf"\b({final_pattern})\b"
+            # Use re.DOTALL to allow matching across multiple lines
             flags = re.DOTALL | (0 if self.case_sensitive.isChecked() else re.IGNORECASE)
             self.final_pattern = re.compile(final_pattern, flags)
             self.pattern_preview.setPlainText(final_pattern)
