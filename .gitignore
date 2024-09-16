@@ -88,6 +88,7 @@ venv.bak/
 .Trashes
 ehthumbs.db
 Thumbs.db
+
 # PyInstaller
 #  Usually these files are written by a python script from a template
 #  before PyInstaller builds the exe, so as to inject date/other infos into it.
@@ -135,6 +136,9 @@ Thumbs.db
 # PyInstaller temporary files
 *.toc
 *.pkg
+
+#icons
+my_icon.ico
 
 # Additional build output folders
 bin/
