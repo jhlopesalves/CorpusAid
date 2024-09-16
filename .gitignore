@@ -162,3 +162,5 @@ requirements.txt
 setup_icon.ico
 my_icon.ico
 
+# Legacy Files
+legacy.py
