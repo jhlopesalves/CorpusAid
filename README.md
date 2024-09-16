@@ -112,7 +112,7 @@ After processing, CorpuScript generates a comprehensive summary report that prov
 
 CorpuScript is distributed as a standalone executable installer for Windows.
 
-1. Download the `corpuscript_win_setup` file from <(https://github.com/jhlopesalves/CorpuScript/releases/tag/v0.1)>.
+1. Download the `corpuscript_win_setup` file from <https://github.com/jhlopesalves/CorpuScript/releases>.
 2. Run the installer and follow the on-screen instructions.
 3. Once the installation is complete, you can launch CorpuScript from your desktop or Start Menu.
 
