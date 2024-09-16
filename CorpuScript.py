@@ -26,10 +26,13 @@ from collections import Counter
 
 def resource_path(relative_path):
     if getattr(sys, 'frozen', False):
-        base_path = sys._MEIPASS if hasattr(sys, '_MEIPASS') else os.path.dirname(sys.executable)
+        # When compiled with Nuitka, the executable's directory is used
+        base_path = os.path.dirname(sys.executable)
     else:
+        # When running as a script, use the script's directory
         base_path = os.path.dirname(os.path.abspath(__file__))
     return os.path.join(base_path, relative_path)
+
 
 def ensure_nltk_data():
     import nltk
