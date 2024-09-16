@@ -988,6 +988,12 @@ class PreprocessorGUI(QMainWindow):
         self.create_toolbar()
         self.setup_central_widget()
         self.setup_status_bar()
+        
+        # Connect the tab switch event to the new function
+        self.text_tabs.currentChanged.connect(self.on_tab_change)
+        # Connect the Enter key press to move to the next occurrence
+        self.search_input.returnPressed.connect(self.go_to_next_occurrence)
+        
         self.signals.update_progress.connect(self.update_progress)
         self.signals.result.connect(self.handle_result)
         self.signals.error.connect(self.handle_error)
@@ -997,6 +1003,15 @@ class PreprocessorGUI(QMainWindow):
         self.apply_theme()
         self.showMaximized()
         QTimer.singleShot(1000, lambda: self.check_for_updates(manual_trigger=False))
+    # Create the function to handle the tab change
+    def on_tab_change(self, index):
+    # Get the current search term from the search input box
+        search_term = self.search_input.text()
+        # If there's a search term, reapply the search on the newly active tab
+        if search_term:
+            active_text_edit = self.text_tabs.widget(index)  # Get the current active text widget
+            if isinstance(active_text_edit, QPlainTextEdit):
+                self.highlight_search_term(active_text_edit, search_term)
 
     def create_menu_bar(self):
         menu_bar = self.menuBar()
@@ -1411,16 +1426,32 @@ class PreprocessorGUI(QMainWindow):
     def highlight_search_term(self, text_edit, search_term):
         extra_selections = []
         self.search_results = []
+        
         if not search_term:
             text_edit.setExtraSelections(extra_selections)
             self.occurrence_label.setText("0/0")
             return
+        
+        # Adjust highlight based on the theme
         highlight_format = QTextCharFormat()
-        highlight_format.setBackground(QColor("yellow"))
+        if self.theme_manager.dark_theme:
+            # In dark mode, set black text with white background
+            highlight_format.setBackground(QColor("yellow"))
+            highlight_format.setForeground(QColor("black"))
+        else:
+            # In light mode, set yellow background with black text
+            highlight_format.setBackground(QColor("yellow"))
+            highlight_format.setForeground(QColor("black"))
+        
         document = text_edit.document()
         cursor = QTextCursor(document)
         occurrence_count = 0
-        while True:
+        
+        # Clear previous search results
+        text_edit.setExtraSelections([])
+        
+        # Search and highlight all occurrences of the term
+        while not cursor.isNull():
             cursor = document.find(search_term, cursor)
             if cursor.isNull():
                 break
@@ -1429,9 +1460,12 @@ class PreprocessorGUI(QMainWindow):
             selection.cursor = cursor
             selection.format = highlight_format
             extra_selections.append(selection)
-            self.search_results.append(QTextCursor(cursor))
-            cursor.setPosition(cursor.position() + 1)
+            self.search_results.append(cursor)
+        
+        # Apply the extra selections uniformly (whether 1 or more occurrences)
         text_edit.setExtraSelections(extra_selections)
+        
+        # Update the occurrence label
         self.update_occurrence_label()
 
     def update_occurrence_label(self):
@@ -1439,15 +1473,10 @@ class PreprocessorGUI(QMainWindow):
         current = self.current_occurrence_index + 1 if self.current_occurrence_index >= 0 else 0
         self.occurrence_label.setText(f"{current}/{total}")
 
-    def goto_occurrence(self, text_edit, index):
-        if 0 <= index < len(self.search_results):
-            cursor = self.search_results[index]
-            text_edit.setTextCursor(cursor)
-            text_edit.centerCursor()
-
     def go_to_next_occurrence(self):
         active_text_edit = self.text_tabs.currentWidget()
         if isinstance(active_text_edit, QPlainTextEdit) and self.search_results:
+            # Move to the next occurrence cyclically
             self.current_occurrence_index = (self.current_occurrence_index + 1) % len(self.search_results)
             self.goto_occurrence(active_text_edit, self.current_occurrence_index)
             self.update_occurrence_label()
@@ -1458,6 +1487,12 @@ class PreprocessorGUI(QMainWindow):
             self.current_occurrence_index = (self.current_occurrence_index - 1) % len(self.search_results)
             self.goto_occurrence(active_text_edit, self.current_occurrence_index)
             self.update_occurrence_label()
+
+    def goto_occurrence(self, text_edit, index):
+        if 0 <= index < len(self.search_results):
+            cursor = self.search_results[index]
+            text_edit.setTextCursor(cursor)
+            text_edit.centerCursor()
 
     def undo(self):
         active_text_edit = self.text_tabs.currentWidget()
