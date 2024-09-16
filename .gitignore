@@ -139,6 +139,7 @@ Thumbs.db
 
 #icons
 my_icon.ico
+*.ico
 
 # Additional build output folders
 bin/
