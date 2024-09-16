@@ -110,15 +110,15 @@ After processing, CorpuScript generates a comprehensive summary report that prov
 
 ## Installation
 
-PreTextCleaner is distributed as a standalone executable installer for Windows.
+CorpuScript is distributed as a standalone executable installer for Windows.
 
-1. Download the `setup.exe` file from [link to your distribution].
+1. Download the `corpuscript_win_setup` file from <(https://github.com/jhlopesalves/CorpuScript/releases/tag/v0.1)>.
 2. Run the installer and follow the on-screen instructions.
-3. Once the installation is complete, you can launch PreTextCleaner from your desktop or Start Menu.
+3. Once the installation is complete, you can launch CorpuScript from your desktop or Start Menu.
 
 ## Usage
 
-PreTextCleaner is designed to be easy to use. Here's a typical workflow:
+CorpuScript is designed to be easy to use. Here's a typical workflow:
 
 1. **Load Text Files:** Open individual text files or entire directories using the "Open Files" or "Open Directory" options from the File menu.
 2. **Select Processing Parameters:** Customize your text cleaning process by selecting the desired parameters in the "Processing Parameters" dialog. Options include setting filters, choosing which characters to remove, and configuring advanced text processing modules like lemmatization and tokenization.
@@ -133,7 +133,7 @@ PreTextCleaner is designed to be easy to use. Here's a typical workflow:
 
 ## License
 
-PreTextCleaner is licensed under the MIT License. This means you are free to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the software, provided that you include the following copyright notice in all copies or substantial portions of the software:
+CorpuScript is licensed under the MIT License. This means you are free to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the software, provided that you include the following copyright notice in all copies or substantial portions of the software:
 
 MIT License
 
