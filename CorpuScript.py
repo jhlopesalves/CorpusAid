@@ -965,7 +965,7 @@ class ReportWorker(QObject):
 class PreprocessorGUI(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.version = "0.1"
+        self.version = "0.2"
         self.file_manager = FileManager()
         self.theme_manager = ThemeManager()
         self.processor = DocumentProcessor()
