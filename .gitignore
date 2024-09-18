@@ -161,6 +161,7 @@ license.txt
 requirements.txt
 setup_icon.ico
 my_icon.ico
+my_icon.bmp
 
 # Legacy Files
 legacy.py
