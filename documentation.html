@@ -1,0 +1,876 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>CorpuScript: User Manual and Instructions</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        /* Base Styles */
+        body {
+            font-family: 'Roboto', sans-serif;
+            margin: 0;
+            padding: 20px;
+            transition: background-color 0.3s, color 0.3s;
+        }
+        h1, h2, h3, h4, h5, h6 {
+            color: var(--primary-color);
+        }
+        h1 {
+            font-size: 2em;
+            margin-bottom: 0.5em;
+            border-bottom: 2px solid var(--secondary-color);
+            padding-bottom: 0.3em;
+        }
+        h2 {
+            font-size: 1.75em;
+            margin-top: 1.5em;
+            margin-bottom: 0.5em;
+            border-bottom: 1px solid var(--secondary-color);
+            padding-bottom: 0.3em;
+        }
+        h3 {
+            font-size: 1.5em;
+            margin-top: 1.2em;
+            margin-bottom: 0.5em;
+        }
+        p {
+            line-height: 1.6;
+            margin-bottom: 1em;
+        }
+        ul, ol {
+            margin-left: 20px;
+            margin-bottom: 1em;
+        }
+        code, pre {
+            background-color: var(--code-bg-color);
+            color: var(--code-text-color);
+            padding: 2px 4px;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+        }
+        pre {
+            padding: 10px;
+            overflow-x: auto;
+        }
+        a {
+            color: var(--link-color);
+            text-decoration: none;
+        }
+        a:hover {
+            text-decoration: underline;
+        }
+        hr {
+            border: none;
+            border-top: 1px solid var(--secondary-color);
+            margin: 2em 0;
+        }
+        /* Light Theme */
+        body.light {
+            --background-color: #F0F0F0;
+            --text-color: #000000;
+            --primary-color: #518FBC;
+            --secondary-color: #325F84;
+            --code-bg-color: #E1E1E1;
+            --code-text-color: #000000;
+            --link-color: #1A73E8;
+        }
+        /* Dark Theme */
+        body.dark {
+            --background-color: #1E1E1E;
+            --text-color: #FFFFFF;
+            --primary-color: #518FBC;
+            --secondary-color: #3F3F3F;
+            --code-bg-color: #2D2D2D;
+            --code-text-color: #FFFFFF;
+            --link-color: #8AB4F8;
+        }
+        /* Apply Theme Variables */
+        body {
+            background-color: var(--background-color);
+            color: var(--text-color);
+        }
+        /* Responsive Table of Contents */
+        .toc {
+            background-color: var(--code-bg-color);
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 2em;
+        }
+        .toc h2 {
+            margin-top: 0;
+        }
+        .toc ul {
+            list-style: none;
+            padding-left: 0;
+        }
+        .toc li {
+            margin-bottom: 0.5em;
+        }
+        .toc a {
+            color: var(--link-color);
+        }
+        /* Buttons */
+        .button {
+            display: inline-block;
+            padding: 8px 16px;
+            background-color: var(--primary-color);
+            color: var(--text-color);
+            border: none;
+            border-radius: 4px;
+            text-decoration: none;
+            margin-top: 10px;
+        }
+        .button:hover {
+            background-color: var(--secondary-color);
+        }
+        /* Code Blocks */
+        pre {
+            background-color: var(--code-bg-color);
+            color: var(--code-text-color);
+            padding: 15px;
+            border-radius: 5px;
+            overflow-x: auto;
+        }
+        /* Mobile Responsiveness */
+        @media (max-width: 600px) {
+            body {
+                padding: 10px;
+            }
+            h1 {
+                font-size: 1.5em;
+            }
+            h2 {
+                font-size: 1.3em;
+            }
+            h3 {
+                font-size: 1.1em;
+            }
+        }
+    </style>
+</head>
+<body class="light">
+    <h1>CorpuScript: User Manual and Instructions</h1>
+    <h2>Introduction</h2>
+    <p>Welcome to <strong>CorpuScript</strong>, an advanced and user-friendly tool designed to streamline the preprocessing of text files for corpus compilation. Whether you're a student, researcher, or language professional, CorpuScript empowers you to efficiently clean and prepare your textual data, ensuring consistency and accuracy across your entire corpus. This guide will walk you through the key functionalities of CorpuScript, providing step-by-step instructions to help you make the most of its powerful features.</p>
+    <hr>
+    <div class="toc">
+        <h2>Table of Contents</h2>
+        <ol>
+            <li><a href="#1-loading-files">Loading Files</a></li>
+            <li><a href="#2-configuring-preprocessing-options">Configuring Preprocessing Options</a>
+                <ul>
+                    <li><a href="#21-accessing-the-processing-parameters-dialog">Accessing the Processing Parameters Dialog</a></li>
+                    <li><a href="#22-general-tab">General Tab</a></li>
+                    <li><a href="#23-advanced-tab">Advanced Tab</a></li>
+                    <li><a href="#24-applying-the-preprocessing-parameters">Applying the Preprocessing Parameters</a></li>
+                    <li><a href="#25-example-configuring-preprocessing-for-a-specific-task">Example: Configuring Preprocessing for a Specific Task</a></li>
+                    <li><a href="#26-best-practices-for-configuring-preprocessing-parameters">Best Practices for Configuring Preprocessing Parameters</a></li>
+                </ul>
+            </li>
+            <li><a href="#3-processing-files">Processing Files</a></li>
+            <li><a href="#4-viewing-and-saving-results">Viewing and Saving Results</a></li>
+            <li><a href="#5-troubleshooting">Troubleshooting</a></li>
+            <li><a href="#6-additional-features">Additional Features</a></li>
+            <li><a href="#7-conclusion">Conclusion</a></li>
+        </ol>
+    </div>
+    <hr>
+    <h2 id="1-loading-files">1. Loading Files</h2>
+    <p>CorpuScript offers flexible options for loading your text data, whether you’re working with individual files or entire directories. This section guides you through the process of importing your <code>.txt</code> files into the application.</p>
+    <h3 id="11-loading-individual-files">1.1. Loading Individual Files</h3>
+    <ol>
+        <li><strong>Access the Open Files Dialog:</strong>
+            <ul>
+                <li><strong>Via Menu:</strong> Click on <code>File &gt; Open Files</code> in the menu bar.</li>
+                <li><strong>Via Toolbar:</strong> Click the <strong>"Open Files"</strong> icon in the toolbar.</li>
+            </ul>
+        </li>
+        <li><strong>Select Files:</strong>
+            <ul>
+                <li>In the dialog that appears, navigate to the location of your <code>.txt</code> files.</li>
+                <li>Select one or more <code>.txt</code> files by holding the <code>Ctrl</code> key (or <code>Cmd</code> on Mac) and clicking on each file.</li>
+            </ul>
+        </li>
+        <li><strong>Add to File List:</strong>
+            <ul>
+                <li>Click <strong>"Open"</strong>.</li>
+                <li>The selected files will now appear in the <strong>"Selected Files"</strong> list on the left panel of the main window.</li>
+            </ul>
+        </li>
+    </ol>
+    <h3 id="12-loading-an-entire-directory">1.2. Loading an Entire Directory</h3>
+    <ol>
+        <li><strong>Access the Open Directory Dialog:</strong>
+            <ul>
+                <li><strong>Via Menu:</strong> Click on <code>File &gt; Open Directory</code>.</li>
+                <li><strong>Via Toolbar:</strong> Click the <strong>"Open Directory"</strong> icon in the toolbar.</li>
+            </ul>
+        </li>
+        <li><strong>Select Directory:</strong>
+            <ul>
+                <li>In the dialog that appears, navigate to the directory containing your <code>.txt</code> files.</li>
+            </ul>
+        </li>
+        <li><strong>Add to File List:</strong>
+            <ul>
+                <li>Click <strong>"Select Folder"</strong>.</li>
+                <li>All <code>.txt</code> files within the chosen directory and its subdirectories will be added to the <strong>"Selected Files"</strong> list.</li>
+            </ul>
+        </li>
+    </ol>
+    <p><strong>Note:</strong> CorpuScript supports batch processing, allowing you to handle large volumes of text files efficiently.</p>
+    <hr>
+    <h2 id="2-configuring-preprocessing-options">2. Configuring Preprocessing Options</h2>
+    <p>CorpuScript provides a robust set of customizable preprocessing options, allowing you to tailor the cleaning process to meet the specific requirements of your project. These options are accessible through the <strong>Processing Parameters</strong> dialog, which is divided into two main sections: <strong>General</strong> and <strong>Advanced</strong>.</p>
+    <h3 id="21-accessing-the-processing-parameters-dialog">2.1. Accessing the Processing Parameters Dialog</h3>
+    <p>You can access the <strong>Processing Parameters</strong> dialog through two convenient methods:</p>
+    <ol>
+        <li><strong>Via Menu:</strong>
+            <ul>
+                <li>Navigate to <code>Settings &gt; Processing Parameters</code> in the menu bar.</li>
+            </ul>
+        </li>
+        <li><strong>Via Toolbar:</strong>
+            <ul>
+                <li>Click the <strong>gear icon</strong> located in the toolbar for quick access.</li>
+            </ul>
+        </li>
+    </ol>
+    <hr>
+    <h3 id="22-general-tab">2.2. General Tab</h3>
+    <p>The <strong>General</strong> tab contains a series of checkboxes that enable or disable specific preprocessing tasks. Each option serves a distinct purpose in cleaning and preparing your text data.</p>
+    <h4 id="221-remove-line-breaks">2.2.1. Remove Line Breaks</h4>
+    <ul>
+        <li><strong>Description:</strong> Eliminates all newline characters (<code>\n</code>) from the text, converting multi-line text into a single continuous line.</li>
+        <li><strong>Use Case:</strong> Ideal for preparing text data that should not contain any line breaks, such as when analyzing continuous narratives or preparing data for models that require uninterrupted text streams.</li>
+        <li><strong>How to Use:</strong> Simply check the box labeled <strong>"Remove Line Breaks"</strong>. The preprocessing pipeline will automatically remove all line breaks during processing.</li>
+    </ul>
+    <h4 id="222-lowercase-conversion">2.2.2. Lowercase Conversion</h4>
+    <ul>
+        <li><strong>Description:</strong> Transforms all characters in the text to lowercase, ensuring uniformity in case-sensitive analyses.</li>
+        <li><strong>Use Case:</strong> Essential for tasks like tokenization, frequency analysis, and other NLP processes where case distinctions are irrelevant or may introduce inconsistencies.</li>
+        <li><strong>How to Use:</strong> Check the box labeled <strong>"Lowercase Conversion"</strong>. All text will be converted to lowercase before further processing.</li>
+    </ul>
+    <h4 id="223-whitespace-normalization">2.2.3. Whitespace Normalization</h4>
+    <ul>
+        <li><strong>Description:</strong> Standardizes whitespace by removing redundant spaces, tabs, and other whitespace characters, ensuring consistent spacing throughout the text.</li>
+        <li><strong>Use Case:</strong> Prevents issues related to inconsistent spacing, which can affect the accuracy of text analysis and processing algorithms.</li>
+        <li><strong>How to Use:</strong> Enable this option by checking the <strong>"Whitespace Normalization"</strong> box. The pipeline will clean up excess whitespace automatically.</li>
+    </ul>
+    <h4 id="224-stopword-removal">2.2.4. Stopword Removal</h4>
+    <ul>
+        <li><strong>Description:</strong> Removes common, non-informative words (stopwords) such as "the", "and", "is", etc., from the text.</li>
+        <li><strong>Use Case:</strong> Reduces noise in text data, enhancing the performance of algorithms by focusing on meaningful words that contribute more significantly to the analysis.</li>
+        <li><strong>How to Use:</strong> Check the box labeled <strong>"Stopword Removal"</strong>. You can further customize the list of stopwords in the <strong>Advanced</strong> tab if needed.</li>
+    </ul>
+    <h4 id="225-strip-html-tags">2.2.5. Strip HTML Tags</h4>
+    <ul>
+        <li><strong>Description:</strong> Removes all HTML tags from the text, extracting plain text content from web-scraped or marked-up documents.</li>
+        <li><strong>Use Case:</strong> Crucial when dealing with text data sourced from websites or any documents containing HTML markup, ensuring only the textual content is processed.</li>
+        <li><strong>How to Use:</strong> Enable this option by checking the <strong>"Strip HTML Tags"</strong> box. All HTML tags will be stripped during preprocessing.</li>
+    </ul>
+    <h4 id="226-remove-diacritics">2.2.6. Remove Diacritics</h4>
+    <ul>
+        <li><strong>Description:</strong> Strips away diacritical marks (accents) from characters, converting them to their base forms (e.g., "é" to "e").</li>
+        <li><strong>Use Case:</strong> Useful for simplifying text for analysis, especially in languages with diacritics, to ensure uniformity and prevent mismatches in text processing tasks.</li>
+        <li><strong>How to Use:</strong> Check the box labeled <strong>"Remove Diacritics"</strong>. Characters with diacritics will be converted to their non-diacritic forms during preprocessing.</li>
+    </ul>
+    <h4 id="227-remove-greek-letters">2.2.7. Remove Greek Letters</h4>
+    <ul>
+        <li><strong>Description:</strong> Filters out Greek script characters from the text.</li>
+        <li><strong>Use Case:</strong> Necessary when processing text data that should exclude Greek characters, possibly to focus on specific scripts or languages.</li>
+        <li><strong>How to Use:</strong> Enable this option by checking the <strong>"Remove Greek Letters"</strong> box. All Greek letters will be removed during preprocessing.</li>
+    </ul>
+    <h4 id="228-remove-cyrillic-script">2.2.8. Remove Cyrillic Script</h4>
+    <ul>
+        <li><strong>Description:</strong> Filters out Cyrillic script characters from the text.</li>
+        <li><strong>Use Case:</strong> Similar to removing Greek letters, this is useful when the corpus should exclude Cyrillic script, focusing on other scripts or languages.</li>
+        <li><strong>How to Use:</strong> Check the box labeled <strong>"Remove Cyrillic Script"</strong> to enable the removal of Cyrillic characters during preprocessing.</li>
+    </ul>
+    <h4 id="229-remove-superscript-and-subscript-characters">2.2.9. Remove Superscript and Subscript Characters</h4>
+    <ul>
+        <li><strong>Description:</strong> Removes superscript and subscript characters, which are typically used for annotations, mathematical expressions, or specialized formatting.</li>
+        <li><strong>Use Case:</strong> Cleans text data by removing characters that may not be relevant to linguistic analysis or could interfere with text processing algorithms.</li>
+        <li><strong>How to Use:</strong> Enable this option by checking the <strong>"Remove Superscript and Subscript Characters"</strong> box. These characters will be filtered out during preprocessing.</li>
+    </ul>
+    <h4 id="2210-normalize-unicode">2.2.10. Normalize Unicode</h4>
+    <ul>
+        <li><strong>Description:</strong> Normalizes the text to a standard Unicode form (NFKC), ensuring consistency in character representation across the dataset.</li>
+        <li><strong>Use Case:</strong> Essential for maintaining data integrity, especially when dealing with text from multiple sources or languages, preventing discrepancies caused by different Unicode representations.</li>
+        <li><strong>How to Use:</strong> Check the box labeled <strong>"Normalize Unicode"</strong>. The text will be normalized to NFKC form during preprocessing.</li>
+    </ul>
+    <hr>
+    <h3 id="23-advanced-tab">2.3. Advanced Tab</h3>
+    <p>The <strong>Advanced</strong> tab offers more granular control over the preprocessing process, allowing users to define custom patterns and specify additional characters to remove. This is particularly useful for handling specialized text cleaning requirements that go beyond the general options provided.</p>
+    <h4 id="231-custom-regex-filtering">2.3.1. Custom Regex Filtering</h4>
+    <ul>
+        <li><strong>Description:</strong> Allows users to define custom regular expressions (regex) to perform advanced text filtering and extraction based on specific patterns.</li>
+        <li><strong>Use Case:</strong> Enables complex text manipulation tasks, such as extracting specific patterns, removing certain phrases, or any task that requires pattern-based processing not covered by the general options.</li>
+        <li><strong>How to Use:</strong>
+            <ol>
+                <li><strong>Open the Advanced Pattern Builder:</strong>
+                    <ul>
+                        <li>Click the <strong>"Set Pattern"</strong> button within the <strong>Advanced</strong> tab. This opens the <strong>Advanced Pattern Builder</strong> wizard.</li>
+                    </ul>
+                </li>
+                <li><strong>Define Your Patterns:</strong>
+                    <ul>
+                        <li><strong>Add a New Pattern:</strong>
+                            <ul>
+                                <li>Click the <strong>"Add Pattern"</strong> button to create a new pattern entry.</li>
+                            </ul>
+                        </li>
+                        <li><strong>Specify Conditions:</strong>
+                            <ul>
+                                <li><strong>Start Condition:</strong> Define the starting point of the pattern you want to match.</li>
+                                <li><strong>End Condition Type:</strong> Choose how the pattern should end. Options include:
+                                    <ul>
+                                        <li><strong>Single Number:</strong> Ends after a single numeric digit.</li>
+                                        <li><strong>Multiple Numbers:</strong> Ends after a specified number of numeric digits.</li>
+                                        <li><strong>Specific Word:</strong> Ends when a particular word is encountered.</li>
+                                    </ul>
+                                </li>
+                                <li><strong>End Condition:</strong> Specify the exact end condition based on the selected type.</li>
+                                <li><strong>Number Length:</strong> If using <strong>Multiple Numbers</strong>, define the exact number of digits.</li>
+                            </ul>
+                        </li>
+                        <li><strong>Configure Additional Settings:</strong>
+                            <ul>
+                                <li><strong>Case Sensitivity:</strong> Choose whether the pattern matching should be case-sensitive.</li>
+                                <li><strong>Whole Word Matching:</strong> Decide if the pattern should match whole words only.</li>
+                            </ul>
+                        </li>
+                    </ul>
+                </li>
+                <li><strong>Test Your Pattern:</strong>
+                    <ul>
+                        <li>Enter sample text in the <strong>Test Input</strong> section to see how your pattern matches and affects the text.</li>
+                        <li>Adjust the pattern as necessary based on the test results.</li>
+                    </ul>
+                </li>
+                <li><strong>Save the Pattern:</strong>
+                    <ul>
+                        <li>Once satisfied, save the pattern. It will be applied during preprocessing.</li>
+                    </ul>
+                </li>
+            </ol>
+        </li>
+    </ul>
+    <h5 id="example-remove-all-urls">Example:</h5>
+    <ul>
+        <li><strong>Objective:</strong> Remove all URLs from the text.</li>
+        <li><strong>Pattern Definition:</strong>
+            <ul>
+                <li><strong>Start Condition:</strong> <code>http</code></li>
+                <li><strong>End Condition Type:</strong> <strong>Specific Word</strong></li>
+                <li><strong>End Condition:</strong> Space character (<code>\s</code>) or end of string</li>
+            </ul>
+        </li>
+        <li><strong>Outcome:</strong> This pattern will match and remove any URL starting with <code>http</code> and ending before a space or the end of the text.</li>
+    </ul>
+    <h4 id="232-select-characters-to-remove">2.3.2. Select Characters to Remove</h4>
+    <ul>
+        <li><strong>Description:</strong> Provides a dialog for selecting specific characters or sequences of characters to remove from the text, offering precise control over unwanted symbols or patterns.</li>
+        <li><strong>Use Case:</strong> Useful for eliminating specific symbols, emojis, or any other characters that are not handled by other preprocessing options, ensuring that only relevant text data remains.</li>
+        <li><strong>How to Use:</strong>
+            <ol>
+                <li><strong>Open the Character Selection Dialog:</strong>
+                    <ul>
+                        <li>Click the <strong>"Select Characters to Remove"</strong> button within the <strong>Advanced</strong> tab. This opens the <strong>Character Selection</strong> dialog.</li>
+                    </ul>
+                </li>
+                <li><strong>Add Characters or Sequences:</strong>
+                    <ul>
+                        <li><strong>Enter Characters:</strong> Type the characters or sequences you wish to remove in the input field.</li>
+                        <li><strong>Include Characters:</strong> Click the <strong>"Include"</strong> button to add them to the removal list.</li>
+                        <li><strong>Example:</strong> To remove emojis, you might enter specific emoji characters or patterns.</li>
+                    </ul>
+                </li>
+                <li><strong>Review Selected Items:</strong>
+                    <ul>
+                        <li>The selected characters or sequences will appear in the <strong>"Items to remove"</strong> list below.</li>
+                    </ul>
+                </li>
+                <li><strong>Remove Unwanted Selections:</strong>
+                    <ul>
+                        <li>To delete any selected character or sequence from the removal list, select it in the list and click the <strong>"Delete Selected"</strong> button.</li>
+                    </ul>
+                </li>
+                <li><strong>Finalize Selections:</strong>
+                    <ul>
+                        <li>Once all desired characters or sequences are listed, click <strong>"OK"</strong> to apply the changes. These characters will be removed during preprocessing.</li>
+                    </ul>
+                </li>
+            </ol>
+        </li>
+    </ul>
+    <h5 id="example-remove-digits-and-symbols">Example:</h5>
+    <ul>
+        <li><strong>Objective:</strong> Remove all numerical digits and specific symbols like <code>#</code> and <code>$</code>.</li>
+        <li><strong>Steps:</strong>
+            <ol>
+                <li>Enter <code>0-9</code>, <code>#</code>, and <code>$</code> in the input field.</li>
+                <li>Click <strong>"Include"</strong> after each entry.</li>
+                <li>Verify that all selected items appear in the list.</li>
+                <li>Click <strong>"OK"</strong> to apply the removals.</li>
+            </ol>
+        </li>
+    </ul>
+    <hr>
+    <h3 id="24-applying-the-preprocessing-parameters">2.4. Applying the Preprocessing Parameters</h3>
+    <p>After configuring your desired preprocessing options in both the <strong>General</strong> and <strong>Advanced</strong> tabs:</p>
+    <ol>
+        <li><strong>Confirm Settings:</strong>
+            <ul>
+                <li>Review all enabled options to ensure they align with your preprocessing goals.</li>
+            </ul>
+        </li>
+        <li><strong>Apply Parameters:</strong>
+            <ul>
+                <li>Click the <strong>"OK"</strong> button at the bottom of the <strong>Processing Parameters</strong> dialog to save and apply your settings.</li>
+            </ul>
+        </li>
+        <li><strong>Start Processing:</strong>
+            <ul>
+                <li>With the parameters set, proceed to load your text files and initiate the preprocessing workflow by clicking the <strong>"Process Files"</strong> button in the toolbar.</li>
+            </ul>
+        </li>
+    </ol>
+    <p><strong>Note:</strong> It's recommended to experiment with different preprocessing configurations on a small subset of your data to observe their effects before processing the entire corpus. This approach helps in fine-tuning the settings for optimal results.</p>
+    <hr>
+    <h3 id="25-example-configuring-preprocessing-for-a-specific-task">2.5. Example: Configuring Preprocessing for a Specific Task</h3>
+    <p><strong>Scenario:</strong> Preparing a corpus for sentiment analysis by removing URLs, converting text to lowercase, stripping HTML tags, and removing stopwords.</p>
+    <ol>
+        <li><strong>Open Processing Parameters:</strong>
+            <ul>
+                <li>Click <code>Settings &gt; Processing Parameters</code> or the gear icon in the toolbar.</li>
+            </ul>
+        </li>
+        <li><strong>General Tab Configurations:</strong>
+            <ul>
+                <li><strong>Enable Lowercase Conversion:</strong>
+                    <ul>
+                        <li>Check the <strong>"Lowercase Conversion"</strong> box to ensure all text is in lowercase.</li>
+                    </ul>
+                </li>
+                <li><strong>Enable Remove Line Breaks:</strong>
+                    <ul>
+                        <li>Check the <strong>"Remove Line Breaks"</strong> box to merge multi-line text into a single line.</li>
+                    </ul>
+                </li>
+                <li><strong>Enable Strip HTML Tags:</strong>
+                    <ul>
+                        <li>Check the <strong>"Strip HTML Tags"</strong> box to remove any HTML markup.</li>
+                    </ul>
+                </li>
+                <li><strong>Enable Stopword Removal:</strong>
+                    <ul>
+                        <li>Check the <strong>"Stopword Removal"</strong> box to eliminate common, non-informative words.</li>
+                    </ul>
+                </li>
+            </ul>
+        </li>
+        <li><strong>Advanced Tab Configurations:</strong>
+            <ul>
+                <li><strong>Define Custom Regex Pattern to Remove URLs:</strong>
+                    <ol>
+                        <li>Click <strong>"Set Pattern"</strong> to open the <strong>Advanced Pattern Builder</strong>.</li>
+                        <li><strong>Add Pattern:</strong>
+                            <ul>
+                                <li><strong>Start Condition:</strong> <code>http</code></li>
+                                <li><strong>End Condition Type:</strong> <strong>Specific Word</strong></li>
+                                <li><strong>End Condition:</strong> Space character (<code>\s</code>) or end of string.</li>
+                            </ul>
+                        </li>
+                        <li><strong>Test Pattern:</strong>
+                            <ul>
+                                <li>Enter sample text containing URLs to verify the pattern correctly identifies and removes them.</li>
+                            </ul>
+                        </li>
+                        <li><strong>Save Pattern:</strong>
+                            <ul>
+                                <li>Once satisfied, save the pattern to apply it during preprocessing.</li>
+                            </ul>
+                        </li>
+                    </ol>
+                </li>
+            </ul>
+        </li>
+        <li><strong>Apply Parameters:</strong>
+            <ul>
+                <li>Click <strong>"OK"</strong> to save and apply all settings.</li>
+            </ul>
+        </li>
+        <li><strong>Process Files:</strong>
+            <ul>
+                <li>Load your text files using <code>File &gt; Open Files</code> or <code>File &gt; Open Directory</code>.</li>
+                <li>Click the <strong>"Process Files"</strong> button in the toolbar to start preprocessing.</li>
+                <li>Monitor the progress through the progress bar and status updates.</li>
+            </ul>
+        </li>
+        <li><strong>Review Results:</strong>
+            <ul>
+                <li>After processing, review the cleaned text in the <strong>"Processed Text"</strong> tab.</li>
+                <li>Ensure that URLs have been removed, text is in lowercase, HTML tags are stripped, and stopwords are eliminated.</li>
+            </ul>
+        </li>
+    </ol>
+    <hr>
+    <h3 id="26-best-practices-for-configuring-preprocessing-parameters">2.6. Best Practices for Configuring Preprocessing Parameters</h3>
+    <ol>
+        <li><strong>Understand Your Data:</strong>
+            <ul>
+                <li>Before configuring preprocessing options, analyze your text data to identify common patterns, unwanted characters, and specific cleaning requirements.</li>
+            </ul>
+        </li>
+        <li><strong>Start Simple:</strong>
+            <ul>
+                <li>Begin with basic preprocessing steps like lowercase conversion and whitespace normalization to establish a clean foundation.</li>
+            </ul>
+        </li>
+        <li><strong>Incrementally Add Advanced Options:</strong>
+            <ul>
+                <li>Gradually introduce advanced preprocessing options such as custom regex filtering and character removals as needed, ensuring each step positively impacts your data quality.</li>
+            </ul>
+        </li>
+        <li><strong>Test Configurations:</strong>
+            <ul>
+                <li>Apply different preprocessing configurations on a small subset of your data to observe their effects and adjust settings accordingly.</li>
+            </ul>
+        </li>
+        <li><strong>Document Your Settings:</strong>
+            <ul>
+                <li>Keep a record of the preprocessing parameters used for each project to ensure reproducibility and facilitate future adjustments.</li>
+            </ul>
+        </li>
+        <li><strong>Leverage Advanced Features:</strong>
+            <ul>
+                <li>Utilize the <strong>Advanced</strong> tab for specialized cleaning tasks that address unique aspects of your text data, enhancing the overall quality and relevance of your corpus.</li>
+            </ul>
+        </li>
+    </ol>
+    <hr>
+    <h2 id="3-processing-files">3. Processing Files</h2>
+    <p>Once you've loaded your text files and configured the preprocessing parameters, you're ready to process your corpus. This section outlines the steps to apply the selected preprocessing options to your files.</p>
+    <h3 id="31-initiating-the-processing-workflow">3.1. Initiating the Processing Workflow</h3>
+    <ol>
+        <li><strong>Start Processing:</strong>
+            <ul>
+                <li>Click the <strong>"Process Files"</strong> button located in the toolbar or select <code>File &gt; Process Files</code> from the menu.</li>
+            </ul>
+        </li>
+        <li><strong>Monitor Progress:</strong>
+            <ul>
+                <li>A <strong>Processing Files</strong> dialog will appear, displaying a progress bar and status updates.</li>
+                <li>The progress bar indicates the completion percentage of the processing task.</li>
+                <li>The status label provides real-time information about the current file being processed and estimated time remaining.</li>
+            </ul>
+        </li>
+        <li><strong>Handling Errors:</strong>
+            <ul>
+                <li>If any errors occur during processing (e.g., file read/write issues), they will be displayed in the status bar and logged for your reference.</li>
+                <li>You can choose to cancel the processing at any time by clicking the <strong>"Cancel"</strong> button in the dialog.</li>
+            </ul>
+        </li>
+    </ol>
+    <h3 id="32-concurrent-processing">3.2. Concurrent Processing</h3>
+    <ul>
+        <li><strong>Multithreading Support:</strong>
+            <ul>
+                <li>CorpuScript utilizes multithreading to process multiple files simultaneously, leveraging your system's CPU cores for optimal performance.</li>
+                <li>This ensures efficient handling of large corpora, reducing the total processing time.</li>
+            </ul>
+        </li>
+        <li><strong>Resource Management:</strong>
+            <ul>
+                <li>The application automatically manages thread pools to prevent system overload, ensuring smooth operation even with extensive datasets.</li>
+            </ul>
+        </li>
+    </ul>
+    <hr>
+    <h2 id="4-viewing-and-saving-results">4. Viewing and Saving Results</h2>
+    <p>After processing your files, CorpuScript provides options to view the original and processed texts, as well as save the results for future use.</p>
+    <h3 id="41-viewing-results">4.1. Viewing Results</h3>
+    <ol>
+        <li><strong>Accessing the Text Tabs:</strong>
+            <ul>
+                <li>Navigate to the <strong>"Original Text"</strong> and <strong>"Processed Text"</strong> tabs located in the main window.</li>
+                <li><strong>Original Text Tab:</strong>
+                    <ul>
+                        <li>Displays the content of the original, unprocessed text files.</li>
+                    </ul>
+                </li>
+                <li><strong>Processed Text Tab:</strong>
+                    <ul>
+                        <li>Shows the text after preprocessing has been applied.</li>
+                    </ul>
+                </li>
+            </ul>
+        </li>
+        <li><strong>Navigating Between Tabs:</strong>
+            <ul>
+                <li>Click on the respective tabs to switch between viewing the original and processed versions of your files.</li>
+            </ul>
+        </li>
+        <li><strong>Search Functionality:</strong>
+            <ul>
+                <li>Use the search bar below the text tabs to locate specific terms or phrases within the text.</li>
+                <li>Utilize the <strong>"Previous"</strong> and <strong>"Next"</strong> buttons to navigate through search results.</li>
+            </ul>
+        </li>
+    </ol>
+    <h3 id="42-saving-results">4.2. Saving Results</h3>
+    <ol>
+        <li><strong>Saving Processed Files:</strong>
+            <ul>
+                <li>Click on <code>File &gt; Save Files</code> or use the <strong>"Save Files"</strong> button in the toolbar.</li>
+            </ul>
+        </li>
+        <li><strong>Choose Save Options:</strong>
+            <ul>
+                <li><strong>Overwrite Original Files:</strong>
+                    <ul>
+                        <li>Select this option to replace the original <code>.txt</code> files with their processed versions.</li>
+                        <li><strong>Caution:</strong> This action is irreversible. Ensure you have backups if needed.</li>
+                    </ul>
+                </li>
+                <li><strong>Save to a Different Directory:</strong>
+                    <ul>
+                        <li>Choose this option to save the processed files in a separate location, preserving the original files.</li>
+                    </ul>
+                </li>
+            </ul>
+        </li>
+        <li><strong>Confirm Save Operation:</strong>
+            <ul>
+                <li>A confirmation dialog will appear, asking you to confirm your save preferences.</li>
+                <li>Review your selection and click <strong>"Yes"</strong> to proceed.</li>
+            </ul>
+        </li>
+        <li><strong>Handling Save Errors:</strong>
+            <ul>
+                <li>If any issues arise during the save process (e.g., insufficient permissions), CorpuScript will notify you via a warning message.</li>
+                <li>Review the error details, address the underlying issue, and attempt to save again if necessary.</li>
+            </ul>
+        </li>
+    </ol>
+    <hr>
+    <h2 id="5-troubleshooting">5. Troubleshooting</h2>
+    <p>Encountering issues while using CorpuScript? This section provides solutions to common problems and tips to ensure smooth operation.</p>
+    <h3 id="51-error-loading-files">5.1. Error Loading Files</h3>
+    <ul>
+        <li><strong>Symptom:</strong> Files fail to load or appear in the <strong>"Selected Files"</strong> list.</li>
+        <li><strong>Possible Causes:</strong>
+            <ul>
+                <li>Unsupported file format (only <code>.txt</code> files are supported).</li>
+                <li>Corrupted or unreadable files.</li>
+            </ul>
+        </li>
+        <li><strong>Solutions:</strong>
+            <ul>
+                <li>Ensure that only <code>.txt</code> files are being loaded.</li>
+                <li>Verify the integrity of the files by opening them in a text editor.</li>
+                <li>Re-download or recover corrupted files if necessary.</li>
+            </ul>
+        </li>
+    </ul>
+    <h3 id="52-incorrect-regex-patterns">5.2. Incorrect Regex Patterns</h3>
+    <ul>
+        <li><strong>Symptom:</strong> Preprocessing does not remove or alter text as expected when using custom regex patterns.</li>
+        <li><strong>Possible Causes:</strong>
+            <ul>
+                <li>Syntax errors in the regex pattern.</li>
+                <li>Misconfigured start and end conditions.</li>
+            </ul>
+        </li>
+        <li><strong>Solutions:</strong>
+            <ul>
+                <li>Double-check the regex syntax using online regex testers.</li>
+                <li>Ensure that start and end conditions are correctly defined in the <strong>Advanced Pattern Builder</strong>.</li>
+                <li>Refer to the <a href="https://www.regular-expressions.info/">Regex Documentation</a> for guidance.</li>
+            </ul>
+        </li>
+    </ul>
+    <h3 id="53-processing-interruptions">5.3. Processing Interruptions</h3>
+    <ul>
+        <li><strong>Symptom:</strong> Processing stops unexpectedly or is too slow.</li>
+        <li><strong>Possible Causes:</strong>
+            <ul>
+                <li>Insufficient system resources (CPU or memory constraints).</li>
+                <li>Extremely large files causing delays.</li>
+            </ul>
+        </li>
+        <li><strong>Solutions:</strong>
+            <ul>
+                <li>Close other applications to free up system resources.</li>
+                <li>Break down large corpora into smaller batches and process them sequentially.</li>
+                <li>Monitor system performance to identify bottlenecks.</li>
+            </ul>
+        </li>
+    </ul>
+    <h3 id="54-save-operation-failures">5.4. Save Operation Failures</h3>
+    <ul>
+        <li><strong>Symptom:</strong> Unable to save processed files or overwrite originals.</li>
+        <li><strong>Possible Causes:</strong>
+            <ul>
+                <li>Lack of write permissions in the target directory.</li>
+                <li>Files are open in another application, preventing overwriting.</li>
+            </ul>
+        </li>
+        <li><strong>Solutions:</strong>
+            <ul>
+                <li>Ensure you have the necessary permissions to write to the target directory.</li>
+                <li>Close any applications that might be accessing the files.</li>
+                <li>Choose an alternative directory to save the processed files.</li>
+            </ul>
+        </li>
+    </ul>
+    <h3 id="55-application-crashes-or-freezes">5.5. Application Crashes or Freezes</h3>
+    <ul>
+        <li><strong>Symptom:</strong> CorpuScript becomes unresponsive or crashes during operation.</li>
+        <li><strong>Possible Causes:</strong>
+            <ul>
+                <li>Software bugs or incompatibilities.</li>
+                <li>Corrupted installation files.</li>
+            </ul>
+        </li>
+        <li><strong>Solutions:</strong>
+            <ul>
+                <li>Restart CorpuScript and attempt the operation again.</li>
+                <li>Reinstall the application to ensure all files are intact.</li>
+                <li>Check for updates that may address known issues.</li>
+                <li>Contact <a href="mailto:jhlopesalves@gmail.com">Support</a> with detailed error logs for assistance.</li>
+            </ul>
+        </li>
+    </ul>
+    <hr>
+    <h2 id="6-additional-features">6. Additional Features</h2>
+    <p>CorpuScript is packed with additional features designed to enhance your preprocessing workflow and provide deeper insights into your corpus.</p>
+    <h3 id="61-detailed-summary-reporting">6.1. Detailed Summary Reporting</h3>
+    <p>After processing your files, CorpuScript generates a comprehensive summary report that provides invaluable insights into your corpus:</p>
+    <ul>
+        <li><strong>Word Frequency Distributions:</strong>
+            <ul>
+                <li>Lists the most common words and their occurrence counts.</li>
+            </ul>
+        </li>
+        <li><strong>Sentence and Token Counts:</strong>
+            <ul>
+                <li>Provides statistics on the number of sentences and tokens processed.</li>
+            </ul>
+        </li>
+        <li><strong>Type-Token Ratio Analysis:</strong>
+            <ul>
+                <li>Measures lexical diversity by comparing the number of unique words to the total number of words.</li>
+            </ul>
+        </li>
+        <li><strong>Corpus Size Statistics:</strong>
+            <ul>
+                <li>Shows the size of your corpus before and after preprocessing.</li>
+            </ul>
+        </li>
+        <li><strong>Applied Preprocessing Parameters Summary:</strong>
+            <ul>
+                <li>Lists all the preprocessing options and parameters that were applied.</li>
+            </ul>
+        </li>
+        <li><strong>Processing Time and Performance Metrics:</strong>
+            <ul>
+                <li>Details the total time taken to process the corpus and other performance-related information.</li>
+            </ul>
+        </li>
+    </ul>
+    <p><strong>Accessing the Summary Report:</strong></p>
+    <ol>
+        <li>Navigate to the <strong>"Summary Report"</strong> tab located alongside the text tabs.</li>
+        <li>Review the generated statistics and analyses to gain insights into your corpus.</li>
+    </ol>
+    <p><strong>Exporting the Report:</strong></p>
+    <ol>
+        <li>Click the <strong>"Export Report"</strong> button within the <strong>"Summary Report"</strong> tab.</li>
+        <li>Choose your preferred format (<code>.txt</code> or <code>.csv</code>) and select the destination folder.</li>
+        <li>Click <strong>"Save"</strong> to export the report for future reference or analysis.</li>
+    </ol>
+    <h3 id="62-customization-and-flexibility">6.2. Customization and Flexibility</h3>
+    <p>CorpuScript offers various customization options to adapt to your specific research needs:</p>
+    <ul>
+        <li><strong>Save and Load Preprocessing Profiles:</strong>
+            <ul>
+                <li>Save your current preprocessing configuration as a profile for future use.</li>
+                <li>Load existing profiles to quickly apply predefined settings to new projects.</li>
+            </ul>
+        </li>
+        <li><strong>Adjustable Parameters:</strong>
+            <ul>
+                <li>Fine-tune preprocessing parameters to suit different research methodologies and corpus types.</li>
+            </ul>
+        </li>
+        <li><strong>Support for Multiple File Formats:</strong>
+            <ul>
+                <li>While primarily supporting <code>.txt</code> files, CorpuScript can be extended to handle other formats like <code>.csv</code> and <code>.json</code> with custom configurations.</li>
+            </ul>
+        </li>
+    </ul>
+    <h3 id="63-data-integrity-and-security">6.3. Data Integrity and Security</h3>
+    <p>Ensuring the integrity and security of your data is paramount:</p>
+    <ul>
+        <li><strong>Non-Destructive Processing:</strong>
+            <ul>
+                <li>By default, CorpuScript preserves original files, allowing you to retain unaltered data.</li>
+            </ul>
+        </li>
+        <li><strong>Automatic Backups:</strong>
+            <ul>
+                <li>Optionally enable automatic backups before processing, safeguarding your data against accidental loss or corruption.</li>
+            </ul>
+        </li>
+        <li><strong>Detailed Logging:</strong>
+            <ul>
+                <li>CorpuScript maintains comprehensive logs of all operations, providing an audit trail for reproducibility and debugging purposes.</li>
+            </ul>
+        </li>
+    </ul>
+    <h3 id="64-multilingual-support">6.4. Multilingual Support</h3>
+    <p>CorpuScript is designed to handle text data in multiple languages:</p>
+    <ul>
+        <li><strong>Language-Specific Preprocessing:</strong>
+            <ul>
+                <li>Customize preprocessing rules to accommodate different languages, accounting for unique linguistic features.</li>
+            </ul>
+        </li>
+        <li><strong>Unicode Compatibility:</strong>
+            <ul>
+                <li>Robust Unicode normalization ensures consistent character representation across diverse languages and scripts.</li>
+            </ul>
+        </li>
+    </ul>
+    <h3 id="65-continuous-updates-and-community-support">6.5. Continuous Updates and Community Support</h3>
+    <p>Stay up-to-date with the latest advancements and receive support when needed:</p>
+    <ul>
+        <li><strong>Regular Updates:</strong>
+            <ul>
+                <li>CorpuScript is continuously updated to incorporate the latest developments in corpus linguistics and NLP.</li>
+            </ul>
+        </li>
+        <li><strong>Active User Community:</strong>
+            <ul>
+                <li>Join the CorpuScript community to share best practices, custom preprocessing recipes, and collaborate on improving the tool.</li>
+            </ul>
+        </li>
+        <li><strong>Support Channels:</strong>
+            <ul>
+                <li>Reach out via <a href="mailto:jhlopesalves@gmail.com">email</a> for personalized assistance and feedback.</li>
+            </ul>
+        </li>
+    </ul>
+    <hr>
+    <h2 id="7-conclusion">7. Conclusion</h2>
+    <p>CorpuScript is a versatile and powerful tool tailored to meet the diverse needs of corpus linguistics and text preprocessing. By following this guide, you can efficiently load, configure, process, and analyze your textual data, ensuring high-quality and consistent corpora for your research or professional projects. Leverage CorpuScript's comprehensive features and customization options to streamline your workflow and achieve precise results.</p>
+    <p>For further assistance or to provide feedback, please contact us at <a href="mailto:jhlopesalves@gmail.com">jhlopesalves@gmail.com</a>.</p>
+    <script>
+        function setTheme(theme) {
+            document.body.className = theme;
+        }
+    </script>
+</body>
+</html>

@@ -21,6 +21,7 @@ from PySide6.QtGui import (
     QIcon, QFont, QColor, QAction, QPainter, QIntValidator,
     QTextOption, QTextCursor, QTextCharFormat, QSyntaxHighlighter, QDesktopServices, QKeySequence
 )
+from PySide6.QtWebEngineWidgets import QWebEngineView
 from bs4 import BeautifulSoup
 from collections import Counter
 
@@ -634,6 +635,8 @@ class AdvancedPatternBuilder(QWizard):
                     end = r'\d'
                     pattern = rf"{start}[^{re.escape(end)}]*?{end}"
                 elif data["end_type"] == "Multiple Numbers":
+                    if not data["number_length"].isdigit():
+                        raise ValueError("Number Length must be a positive integer for Multiple Numbers.")
                     end = r'\d{' + data["number_length"] + '}'
                     pattern = rf"{start}[^{re.escape(end[-1])}]*?{end}"
                 else:
@@ -653,6 +656,8 @@ class AdvancedPatternBuilder(QWizard):
             self.explanation.setText(f"This pattern will match: {', '.join(patterns)}")
         except re.error as e:
             QMessageBox.warning(self, "Invalid Pattern", f"The entered pattern is invalid:\n{str(e)}")
+        except ValueError as ve:
+            QMessageBox.warning(self, "Invalid Input", str(ve))
 
     def testPattern(self):
         self.updatePattern()
@@ -972,8 +977,11 @@ class ReportWorker(QObject):
         files_report += f"<p><b>Total Files:</b> {len(self.files)}</p>"
         files_report += f"<p><b>Total Size:</b> {total_size_mb:.2f} MB</p>"
         files_report += f"<p><b>Average Size per File:</b> {avg_size_mb:.2f} MB</p>"
-        files_report += f"<p><b>Earliest File Modification:</b> {time.ctime(min(os.path.getmtime(file) for file in self.files))}</p>"
-        files_report += f"<p><b>Latest File Modification:</b> {time.ctime(max(os.path.getmtime(file) for file in self.files))}</p>"
+        if self.files:
+            earliest_mod = min(os.path.getmtime(file) for file in self.files)
+            latest_mod = max(os.path.getmtime(file) for file in self.files)
+            files_report += f"<p><b>Earliest File Modification:</b> {time.ctime(earliest_mod)}</p>"
+            files_report += f"<p><b>Latest File Modification:</b> {time.ctime(latest_mod)}</p>"
         corpus_report = f"<h3>{'Processed ' if self.processed else ''}Corpus Report</h3>"
         corpus_report += f"<p><b>Word Count:</b> {total_words}</p>"
         corpus_report += f"<p><b>Average Word Count per File:</b> {avg_words:.2f}</p>"
@@ -991,7 +999,7 @@ class ReportWorker(QObject):
 class PreprocessorGUI(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.version = "0.3"
+        self.version = "0.4"
         self.file_manager = FileManager()
         self.theme_manager = ThemeManager()
         self.processor = DocumentProcessor()
@@ -1418,30 +1426,68 @@ class PreprocessorGUI(QMainWindow):
         QMessageBox.about(self, "About", f"CorpuScript\nVersion {self.version}\n\nDeveloped by Jhonatan Lopes")
 
     def show_documentation(self):
+        documentation_file = resource_path("documentation.html")
+        if not os.path.exists(documentation_file):
+            QMessageBox.warning(self, "Documentation Not Found", f"The documentation.html file could not be found: {documentation_file}")
+            return
+        with open(documentation_file, 'r', encoding='utf-8') as f:
+            html_content = f.read()
+        base_url = QUrl.fromLocalFile(os.path.abspath(documentation_file))
+
+        # Get the current theme colors
+        bg_color = self.theme_manager.custom_colors['background']
+        text_color = self.theme_manager.custom_colors['text']
+        primary_color = self.theme_manager.custom_colors['primary']
+        secondary_color = self.theme_manager.custom_colors['secondary']
+        accent_color = self.theme_manager.custom_colors['accent']
+
+        # Define CSS styles using the theme colors
+        css_styles = f"""
+        <style>
+            body {{
+                background-color: {bg_color};
+                color: {text_color};
+                font-family: Roboto, sans-serif;
+                margin: 20px;
+            }}
+            h1, h2, h3, h4, h5, h6 {{
+                color: {primary_color};
+            }}
+            a {{
+                color: {secondary_color};
+            }}
+            code, pre {{
+                background-color: #444444;
+                color: #f0f0f0;
+                padding: 5px;
+                border-radius: 5px;
+                font-family: 'Courier New', Courier, monospace;
+            }}
+            pre {{
+                padding: 10px;
+            }}
+            /* Add more styles as needed */
+        </style>
+        """
+
+
+        # Insert the CSS styles into the HTML content
+        html_content = html_content.replace('</head>', f'{css_styles}</head>')
+
         if self.documentation_window is None:
-            readme_file = resource_path("README.md")
-            try:
-                with open(readme_file, "r", encoding="utf-8") as f:
-                    readme_content = f.read()
-                self.documentation_window = QTextEdit()
-                self.documentation_window.setWindowTitle("Documentation")
-                self.documentation_window.resize(800, 600)
-                font = QFont("Roboto", 12)
-                self.documentation_window.setFont(font)
-                self.documentation_window.setMarkdown(readme_content)
-                self.documentation_window.setReadOnly(True)
-                self.documentation_window.setWordWrapMode(QTextOption.WordWrap)
-            except FileNotFoundError:
-                QMessageBox.warning(self, "Documentation Not Found", f"The README.md file could not be found: {readme_file}")
-                return
-            except Exception as e:
-                QMessageBox.warning(self, "Error", f"An error occurred while reading the documentation: {str(e)}")
-                return
+            self.documentation_window = QWebEngineView()
+            self.documentation_window.setWindowTitle("Documentation")
+            self.documentation_window.resize(800, 600)
+            self.documentation_window.setMinimumSize(800, 600)
+            self.documentation_window.setWindowIcon(self.windowIcon())
+
+        self.documentation_window.setStyleSheet(self.theme_manager.get_stylesheet())
+        self.documentation_window.setHtml(html_content, base_url)
         self.documentation_window.show()
+
 
     def goto_occurrence(self, text_edit, index):
         if 0 <= index < len(self.search_results):
-            # Move cursor to the start of the occurrence without selecting text
             cursor = QTextCursor(text_edit.document())
             cursor.setPosition(self.search_results[index].selectionStart())
             text_edit.setTextCursor(cursor)
@@ -1456,15 +1502,13 @@ class PreprocessorGUI(QMainWindow):
             self.update_occurrence_label()
             return
 
-        # Highlight format for all occurrences
         highlight_format = QTextCharFormat()
-        highlight_format.setBackground(QColor("#FFFF00"))  # Yellow background
-        highlight_format.setForeground(QColor("#000000"))  # Black text
+        highlight_format.setBackground(QColor("#FFFF00"))
+        highlight_format.setForeground(QColor("#000000"))
 
-        # Highlight format for current occurrence
         current_highlight_format = QTextCharFormat()
-        current_highlight_format.setBackground(QColor("#FFA500"))  # Orange background
-        current_highlight_format.setForeground(QColor("#000000"))  # Black text
+        current_highlight_format.setBackground(QColor("#FFA500"))
+        current_highlight_format.setForeground(QColor("#000000"))
 
         document = text_edit.document()
         cursor = QTextCursor(document)
@@ -1555,7 +1599,7 @@ class PreprocessorGUI(QMainWindow):
             self.files_report_text.clear()
             self.corpus_report_text.clear()
             return
-        if self.report_thread.isRunning():
+        if hasattr(self, 'report_thread') and self.report_thread.isRunning():
             self.report_thread.quit()
             self.report_thread.wait()
         self.report_worker = ReportWorker(self.file_manager.get_files(), processed, processed_results)
