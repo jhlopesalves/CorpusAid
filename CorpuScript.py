@@ -999,7 +999,7 @@ class ReportWorker(QObject):
 class PreprocessorGUI(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.version = "0.4"
+        self.version = "0.5"
         self.file_manager = FileManager()
         self.theme_manager = ThemeManager()
         self.processor = DocumentProcessor()
@@ -1247,6 +1247,7 @@ class PreprocessorGUI(QMainWindow):
             self.file_list.addItems(new_files)
             self.update_status_bar()
             self.update_report()
+            self.display_original_texts()
 
     def open_directory(self):
         self.status_bar.clearMessage()
@@ -1281,6 +1282,7 @@ class PreprocessorGUI(QMainWindow):
             self.file_list.addItems(new_files)
             self.update_status_bar()
             self.update_report()
+            self.display_original_texts()
         else:
             self.status_bar.showMessage("Operation cancelled.", 5000)
 
@@ -1405,6 +1407,24 @@ class PreprocessorGUI(QMainWindow):
             warning_msg = "\n".join([f"{file}: {warning}" for file, warning in warnings])
             QMessageBox.warning(self, 'Processing Warnings', f"Warnings during processing:\n\n{warning_msg}")
 
+    def display_original_texts(self):
+        if self.file_manager.get_files():
+            self.original_text.clear()
+            self.processed_text.clear()
+            for file_path in self.file_manager.get_files():
+                try:
+                    with open(file_path, 'r', encoding='utf-8', errors='ignore') as file:
+                        original_text = file.read()
+                    self.original_text.appendPlainText(f"File: {file_path}\n\n{original_text}\n\n")
+                    self.processed_text.appendPlainText(f"File: {file_path}\n\n{original_text}\n\n")
+                except Exception as e:
+                    logging.error(f"Error reading file {file_path}: {str(e)}")
+            self.current_file = self.file_manager.get_files()[0]
+        else:
+            self.original_text.clear()
+            self.processed_text.clear()
+            self.current_file = None
+
     def start_new_cleaning(self):
         self.file_manager.clear_files()
         self.file_list.clear()
@@ -1434,14 +1454,12 @@ class PreprocessorGUI(QMainWindow):
             html_content = f.read()
         base_url = QUrl.fromLocalFile(os.path.abspath(documentation_file))
 
-        # Get the current theme colors
         bg_color = self.theme_manager.custom_colors['background']
         text_color = self.theme_manager.custom_colors['text']
         primary_color = self.theme_manager.custom_colors['primary']
         secondary_color = self.theme_manager.custom_colors['secondary']
         accent_color = self.theme_manager.custom_colors['accent']
 
-        # Define CSS styles using the theme colors
         css_styles = f"""
         <style>
             body {{
@@ -1466,12 +1484,9 @@ class PreprocessorGUI(QMainWindow):
             pre {{
                 padding: 10px;
             }}
-            /* Add more styles as needed */
         </style>
         """
 
-
-        # Insert the CSS styles into the HTML content
         html_content = html_content.replace('</head>', f'{css_styles}</head>')
 
         if self.documentation_window is None:
@@ -1484,7 +1499,6 @@ class PreprocessorGUI(QMainWindow):
         self.documentation_window.setStyleSheet(self.theme_manager.get_stylesheet())
         self.documentation_window.setHtml(html_content, base_url)
         self.documentation_window.show()
-
 
     def goto_occurrence(self, text_edit, index):
         if 0 <= index < len(self.search_results):
