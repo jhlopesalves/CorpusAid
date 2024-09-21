@@ -90,3 +90,4 @@ include/
 *db
 *.bmp
 *.co
+setup_icon.ico
