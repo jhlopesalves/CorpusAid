@@ -62,15 +62,15 @@ class CharacterFilterModule(PreprocessingModule):
 
 class WhitespaceNormalizationModule(PreprocessingModule):
     def process(self, text):
-        text = re.sub(r'\s+([.,?!;:])', r'\1', text)
-        text = re.sub(r'([.,?!;:])(\S)', r'\1 \2', text)
-        text = re.sub(r'\(\s+', '(', text)
-        text = re.sub(r'\s+\)', ')', text)
-        text = re.sub(r'\[\s+', '[', text)
-        text = re.sub(r'\s+\]', ']', text)
-        text = re.sub(r'\{\s+', '{', text)
-        text = re.sub(r'\s+\}', '}', text)
-        text = re.sub(r'\s{2,}', ' ', text)
+        text = re.sub(r'\s+([.,?!;:])', r'\1', text) # Remove whitespace before punctuation
+        text = re.sub(r'([.,?!;:])(\S)', r'\1 \2', text) # Add space after punctuation
+        text = re.sub(r'\(\s+', '(', text) # Remove whitespace after opening parentheses
+        text = re.sub(r'\s+\)', ')', text) # Remove whitespace before closing parentheses
+        text = re.sub(r'\[\s+', '[', text) # Remove whitespace after opening brackets
+        text = re.sub(r'\s+\]', ']', text) # Remove whitespace before closing brackets
+        text = re.sub(r'\{\s+', '{', text) # Remove whitespace after opening braces
+        text = re.sub(r'\s+\}', '}', text) # Remove whitespace before closing braces
+        text = re.sub(r'\s{2,}', ' ', text) # Replace multiple spaces with a single space
         return text.strip()
 
 class LineBreakRemovalModule(PreprocessingModule):
@@ -98,7 +98,7 @@ class StopWordRemovalModule(TokenBasedModule):
         self.stop_words = set(stopwords.words('english'))
 
     def process_tokens(self, tokens):
-        return [word for word in tokens if word.lower() not in self.stop_words]
+        return [word for word in tokens if word.lower() not in self.stop_words] 
 
 class RegexFilterModule(PreprocessingModule):
     def __init__(self, pattern, replacement=''):
@@ -113,28 +113,28 @@ class RegexFilterModule(PreprocessingModule):
 
 class HTMLStripperModule(PreprocessingModule):
     def process(self, text):
-        return BeautifulSoup(text, "html.parser").get_text()
+        return BeautifulSoup(text, "html.parser").get_text() 
 
 class DiacriticRemovalModule(PreprocessingModule):
     def process(self, text):
-        return ''.join(c for c in unicodedata.normalize('NFD', text)
+        return ''.join(c for c in unicodedata.normalize('NFD', text) 
                        if unicodedata.category(c) != 'Mn')
 
 class GreekLetterRemovalModule(PreprocessingModule):
     def process(self, text):
-        return ''.join(char for char in text if not unicodedata.name(char, '').startswith('GREEK'))
+        return ''.join(char for char in text if not unicodedata.name(char, '').startswith('GREEK')) 
 
 class CyrillicRemovalModule(PreprocessingModule):
     def process(self, text):
-        return ''.join(char for char in text if not unicodedata.name(char, '').startswith('CYRILLIC'))
+        return ''.join(char for char in text if not unicodedata.name(char, '').startswith('CYRILLIC')) 
 
 class UnicodeNormalizationModule(PreprocessingModule):
     def process(self, text):
-        return unicodedata.normalize('NFKC', text)
+        return unicodedata.normalize('NFKC', text) 
 
 class UnicodeCategoryFilterModule(PreprocessingModule):
     def __init__(self, categories_to_remove):
-        self.categories_to_remove = set(categories_to_remove)
+        self.categories_to_remove = set(categories_to_remove) 
 
     def process(self, text):
         return ''.join(char for char in text if unicodedata.category(char) not in self.categories_to_remove)
@@ -144,7 +144,7 @@ class PreprocessingPipeline:
         self.modules = []
 
     def add_module(self, module):
-        self.modules.append(module)
+        self.modules.append(module) 
 
     def process(self, text):
         tokens = None
@@ -518,7 +518,7 @@ class ThemeManager:
 class AdvancedPatternBuilder(QWizard):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Advanced Pattern Builder")
+        self.setWindowTitle("Advanced Pattern Builder") 
         self.setWizardStyle(QWizard.ModernStyle)
         self.setMinimumSize(700, 500)
         self.addPage(self.createPatternPage())
@@ -526,13 +526,12 @@ class AdvancedPatternBuilder(QWizard):
 
     def createPatternPage(self):
         page = QWizardPage()
-        page.setTitle("Define Patterns")
-
+        page.setTitle("Define Patterns") 
         layout = QVBoxLayout()
 
         self.pattern_table = QTableWidget()
         self.pattern_table.setColumnCount(4)
-        self.pattern_table.setHorizontalHeaderLabels(["Start Condition", "End Condition Type", "End Condition", "Number Length"])
+        self.pattern_table.setHorizontalHeaderLabels(["Start Condition", "End Condition Type", "End Condition", "Number Length"]) 
         self.pattern_table.horizontalHeader().setStretchLastSection(False)
         self.pattern_table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         header = self.pattern_table.horizontalHeader()
@@ -992,7 +991,7 @@ class ReportWorker(QObject):
             corpus_report += f"<li>{word}: {count}</li>"
         corpus_report += "</ul>"
         self.finished.emit(files_report, corpus_report)
-
+   
 class PreprocessorGUI(QMainWindow):
     def __init__(self):
         super().__init__()
