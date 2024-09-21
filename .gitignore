@@ -1,0 +1,92 @@
+# Virtual Environment
+.venv/
+venv/
+env/
+.env/
+
+# Python cache files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribution / packaging
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+CorpuScript-backup.git/
+CorpuScript/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Nuitka output
+Nuitka/
+bin/
+CorpuScript.build/
+CorpuScript.dist/
+
+# PyInstaller
+*.manifest
+*.spec
+
+# PyInstaller build directories
+dist/
+output/
+
+# Installer files
+InstallerOutput/
+setup/
+logs/
+
+# Logs
+*.log
+
+# IDE specific files (VSCode, PyCharm, etc.)
+.vscode/
+.idea/
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Backup files
+*.bak
+
+# Pyenv
+.python-version
+
+# mkdocs documentation
+/site
+
+# mypy
+.mypy_cache/
+
+# Additional build output folders
+lib/
+include/
+
+# Excluded executables and large files
+*.exe
+*.dll
+
+#MISC
+*db
+*.bmp
+*.co

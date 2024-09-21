@@ -1,0 +1,4 @@
+PySide6==6.3.0
+nltk==3.6.2
+beautifulsoup4==4.9.3
+requests==2.25.1
