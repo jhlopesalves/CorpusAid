@@ -16,36 +16,34 @@ from PySide6.QtWidgets import (
     QSplitter, QToolBar, QStatusBar, QListWidgetItem,
     QPlainTextEdit, QWizard, QWizardPage, QTableWidget, QComboBox, QHeaderView
 )
-from PySide6.QtCore import Qt, Signal, QObject, QThread, QSize, QRunnable, QThreadPool, QUrl, QTimer, Slot
+from PySide6.QtCore import Qt, Signal, QObject, QThread, QSize, QRunnable, QThreadPool, QUrl, QTimer
 from PySide6.QtGui import (
-    QIcon, QFont, QColor, QAction, QPainter, QIntValidator,
-    QTextOption, QTextCursor, QTextCharFormat, QSyntaxHighlighter, QDesktopServices, QKeySequence
+    QIcon, QFont, QColor, QAction, QPainter, QIntValidator, QTextCursor, QTextCharFormat, QSyntaxHighlighter, QDesktopServices, QKeySequence
 )
 from PySide6.QtWebEngineWidgets import QWebEngineView
 from bs4 import BeautifulSoup
 from collections import Counter
+import spacy
+from spacy.lang.en.stop_words import STOP_WORDS
+from spacy.language import Language
+from spacy.tokens import Token
+import threading
 
 def resource_path(relative_path):
     if getattr(sys, 'frozen', False):
-        base_path = os.path.dirname(sys.executable)
+        base_path = getattr(sys, '_MEIPASS', os.path.dirname(sys.executable))
     else:
         base_path = os.path.dirname(os.path.abspath(__file__))
     return os.path.join(base_path, relative_path)
 
-def ensure_nltk_data():
-    import nltk
-    if getattr(sys, 'frozen', False):
-        nltk_data_path = resource_path('nltk_data')
-        nltk.data.path.append(nltk_data_path)
-    required_data = [
-        'tokenizers/punkt',
-        'corpora/stopwords',
-    ]
-    for item in required_data:
-        try:
-            nltk.data.find(item)
-        except LookupError:
-            nltk.download(item.split('/')[-1])
+def get_spacy_model():
+    if not hasattr(get_spacy_model, 'lock'):
+        get_spacy_model.lock = threading.Lock()
+    with get_spacy_model.lock:
+        if not hasattr(get_spacy_model, 'nlp'):
+            get_spacy_model.nlp = spacy.load('en_core_web_sm', disable=['parser', 'ner'])
+            get_spacy_model.nlp.add_pipe('sentencizer')
+    return get_spacy_model.nlp
 
 class PreprocessingModule:
     def process(self, text):
@@ -62,79 +60,108 @@ class CharacterFilterModule(PreprocessingModule):
 
 class WhitespaceNormalizationModule(PreprocessingModule):
     def process(self, text):
-        text = re.sub(r'\s+([.,?!;:])', r'\1', text) # Remove whitespace before punctuation
-        text = re.sub(r'([.,?!;:])(\S)', r'\1 \2', text) # Add space after punctuation
-        text = re.sub(r'\(\s+', '(', text) # Remove whitespace after opening parentheses
-        text = re.sub(r'\s+\)', ')', text) # Remove whitespace before closing parentheses
-        text = re.sub(r'\[\s+', '[', text) # Remove whitespace after opening brackets
-        text = re.sub(r'\s+\]', ']', text) # Remove whitespace before closing brackets
-        text = re.sub(r'\{\s+', '{', text) # Remove whitespace after opening braces
-        text = re.sub(r'\s+\}', '}', text) # Remove whitespace before closing braces
-        text = re.sub(r'\s{2,}', ' ', text) # Replace multiple spaces with a single space
+        text = re.sub(r'\s+([.,?!;:])', r'\1', text)
+        text = re.sub(r'([.,?!;:])(\S)', r'\1 \2', text)
+        text = re.sub(r'\(\s+', '(', text)
+        text = re.sub(r'\s+\)', ')', text)
+        text = re.sub(r'\[\s+', '[', text)
+        text = re.sub(r'\s+\]', ']', text)
+        text = re.sub(r'\{\s+', '{', text)
+        text = re.sub(r'\s+\}', '}', text)
+        text = re.sub(r'\s{2,}', ' ', text)
         return text.strip()
 
 class LineBreakRemovalModule(PreprocessingModule):
     def process(self, text):
-        return re.sub(r'\n', ' ', text)
+        return text.replace('\n', ' ')
 
 class LowercaseModule(PreprocessingModule):
     def process(self, text):
         return text.lower()
 
 class TokenBasedModule(PreprocessingModule):
+    def __init__(self):
+        self.nlp = get_spacy_model()
+
     def process_tokens(self, tokens):
         raise NotImplementedError
 
     def process(self, text_or_tokens):
         if isinstance(text_or_tokens, str):
-            tokens = text_or_tokens.split()
+            doc = self.nlp(text_or_tokens)
+            tokens = [token.text for token in doc]
         else:
             tokens = text_or_tokens
         return self.process_tokens(tokens)
 
-class StopWordRemovalModule(TokenBasedModule):
-    def __init__(self):
-        from nltk.corpus import stopwords
-        self.stop_words = set(stopwords.words('english'))
-
-    def process_tokens(self, tokens):
-        return [word for word in tokens if word.lower() not in self.stop_words] 
-
-class RegexFilterModule(PreprocessingModule):
+class RegexSubstitutionModule(PreprocessingModule):
     def __init__(self, pattern, replacement=''):
-        self.pattern = re.compile(pattern) if pattern else None
+        super().__init__()
+        try:
+            self.pattern = re.compile(pattern, re.DOTALL)
+            logging.debug(f"Compiled regex pattern: {pattern}")
+        except re.error as e:
+            logging.error(f"Invalid regex pattern: {pattern}\nError: {str(e)}")
+            QMessageBox.warning(None, "Invalid Regex Pattern", f"The entered regex pattern is invalid:\n{str(e)}")
+            self.pattern = None
         self.replacement = replacement
 
     def process(self, text):
         if self.pattern:
-            result = self.pattern.sub(self.replacement, text)
-            return result
+            new_text, count = self.pattern.subn(self.replacement, text)
+            if count > 0:
+                logging.debug(f"Applied pattern: '{self.pattern.pattern}' - {count} replacements made.")
+            return new_text
         return text
+
+class LemmatizationModule(TokenBasedModule):
+    def process_tokens(self, tokens):
+        return [token.lemma_ for token in self.nlp(" ".join(tokens))]
+
+class SentenceTokenizationModule(TokenBasedModule):
+    def process(self, text):
+        doc = self.nlp(text)
+        sentences = [sent.text.strip() for sent in doc.sents]
+        return '\n'.join(sentences)
+
+class WordTokenizationModule(TokenBasedModule):
+    def process(self, text):
+        doc = self.nlp(text)
+        tokens = [token.text for token in doc]
+        return ' '.join(tokens)
+
+
+class StopWordRemovalModule(TokenBasedModule):
+    def __init__(self):
+        super().__init__()
+        self.stop_words = set(STOP_WORDS)
+
+    def process_tokens(self, tokens):
+        return [word for word in tokens if word.lower() not in self.stop_words]
 
 class HTMLStripperModule(PreprocessingModule):
     def process(self, text):
-        return BeautifulSoup(text, "html.parser").get_text() 
+        return BeautifulSoup(text, "html.parser").get_text()
 
 class DiacriticRemovalModule(PreprocessingModule):
     def process(self, text):
-        return ''.join(c for c in unicodedata.normalize('NFD', text) 
-                       if unicodedata.category(c) != 'Mn')
+        return ''.join(c for c in unicodedata.normalize('NFD', text) if unicodedata.category(c) != 'Mn')
 
 class GreekLetterRemovalModule(PreprocessingModule):
     def process(self, text):
-        return ''.join(char for char in text if not unicodedata.name(char, '').startswith('GREEK')) 
+        return ''.join(char for char in text if not unicodedata.name(char, '').startswith('GREEK'))
 
 class CyrillicRemovalModule(PreprocessingModule):
     def process(self, text):
-        return ''.join(char for char in text if not unicodedata.name(char, '').startswith('CYRILLIC')) 
+        return ''.join(char for char in text if not unicodedata.name(char, '').startswith('CYRILLIC'))
 
 class UnicodeNormalizationModule(PreprocessingModule):
     def process(self, text):
-        return unicodedata.normalize('NFKC', text) 
+        return unicodedata.normalize('NFKC', text)
 
 class UnicodeCategoryFilterModule(PreprocessingModule):
     def __init__(self, categories_to_remove):
-        self.categories_to_remove = set(categories_to_remove) 
+        self.categories_to_remove = set(categories_to_remove)
 
     def process(self, text):
         return ''.join(char for char in text if unicodedata.category(char) not in self.categories_to_remove)
@@ -144,47 +171,39 @@ class PreprocessingPipeline:
         self.modules = []
 
     def add_module(self, module):
-        self.modules.append(module) 
+        self.modules.append(module)
 
     def process(self, text):
-        tokens = None
         for module in self.modules:
-            if isinstance(module, TokenBasedModule):
-                if tokens is None:
-                    tokens = text.split()
-                tokens = module.process(tokens)
-            else:
-                if tokens is not None:
-                    text = ' '.join(tokens)
-                    tokens = None
-                text = module.process(text)
-        if tokens is not None:
-            result = ' '.join(tokens)
-        else:
-            result = text
-        return result.strip()
+            text = module.process(text)
+            if isinstance(text, list):
+                text = ' '.join(text)
+        return text.strip()
 
 class DocumentProcessor:
     def __init__(self):
-        self.pipeline = PreprocessingPipeline()
         self.parameters = {
             "remove_break_lines": False,
             "lowercase": False,
             "chars_to_remove": [],
+            "lemmatization": False,
+            "sentence_tokenization": False,
+            "word_tokenization": False,
             "remove_stop_words": False,
-            "regex_pattern": "",
+            "regex_pattern": "",  # Use singular to match the rest of your code
             "strip_html": False,
             "remove_diacritics": False,
             "remove_greek": False,
             "remove_cyrillic": False,
             "remove_super_sub_script": False,
             "normalize_spacing": False,
-            "pattern_data": [],
-            "normalize_unicode": True,
+            "normalize_unicode": False,
         }
+        self.update_pipeline()
 
     def set_parameters(self, parameters):
         try:
+            # Validate regex patterns
             if "regex_pattern" in parameters and parameters["regex_pattern"]:
                 re.compile(parameters["regex_pattern"])
             if "chars_to_remove" in parameters:
@@ -195,50 +214,72 @@ class DocumentProcessor:
                         raise ValueError("All items in chars_to_remove must be strings")
             self.parameters.update(parameters)
             self.update_pipeline()
+            logging.debug(f"Updated parameters: {self.parameters}")
         except re.error as e:
-            logging.error(f"Invalid regex pattern: {parameters.get('regex_pattern', '')}\nError: {str(e)}")
+            logging.error(f"Invalid regex pattern: {e}")
             QMessageBox.warning(None, "Invalid Regex Pattern", f"The entered regex pattern is invalid:\n{str(e)}")
         except ValueError as e:
-            logging.error(f"Parameter validation error: {str(e)}")
+            logging.error(f"Parameter validation error: {e}")
             QMessageBox.warning(None, "Parameter Error", str(e))
 
     def update_pipeline(self):
         self.pipeline = PreprocessingPipeline()
         if self.parameters["regex_pattern"]:
-            self.pipeline.add_module(RegexFilterModule(self.parameters["regex_pattern"]))
+            self.pipeline.add_module(RegexSubstitutionModule(self.parameters["regex_pattern"]))
+            logging.debug("Added RegexSubstitutionModule to pipeline.")
         if self.parameters["strip_html"]:
             self.pipeline.add_module(HTMLStripperModule())
+            logging.debug("Added HTMLStripperModule to pipeline.")
         if self.parameters["remove_break_lines"]:
             self.pipeline.add_module(LineBreakRemovalModule())
+            logging.debug("Added LineBreakRemovalModule to pipeline.")
         if self.parameters["lowercase"]:
             self.pipeline.add_module(LowercaseModule())
+            logging.debug("Added LowercaseModule to pipeline.")
         if self.parameters["chars_to_remove"]:
             self.pipeline.add_module(CharacterFilterModule(self.parameters["chars_to_remove"]))
+            logging.debug("Added CharacterFilterModule to pipeline.")
+        if self.parameters.get("lemmatization"):
+            self.pipeline.add_module(LemmatizationModule())
+            logging.debug("Added LemmatizationModule to pipeline.")
+        if self.parameters.get("sentence_tokenization"):
+            self.pipeline.add_module(SentenceTokenizationModule())
+            logging.debug("Added SentenceTokenizationModule to pipeline.")
+        if self.parameters.get("word_tokenization"):
+            self.pipeline.add_module(WordTokenizationModule())
+            logging.debug("Added WordTokenizationModule to pipeline.")
         if self.parameters["remove_stop_words"]:
             self.pipeline.add_module(StopWordRemovalModule())
+            logging.debug("Added StopWordRemovalModule to pipeline.")
         if self.parameters["remove_diacritics"]:
             self.pipeline.add_module(DiacriticRemovalModule())
+            logging.debug("Added DiacriticRemovalModule to pipeline.")
         if self.parameters["remove_greek"]:
             self.pipeline.add_module(GreekLetterRemovalModule())
+            logging.debug("Added GreekLetterRemovalModule to pipeline.")
         if self.parameters["remove_cyrillic"]:
             self.pipeline.add_module(CyrillicRemovalModule())
+            logging.debug("Added CyrillicRemovalModule to pipeline.")
         if self.parameters["remove_super_sub_script"]:
             categories_to_remove = {'No', 'Sk'}
             self.pipeline.add_module(UnicodeCategoryFilterModule(categories_to_remove))
+            logging.debug("Added UnicodeCategoryFilterModule to pipeline.")
         if self.parameters["normalize_spacing"]:
             self.pipeline.add_module(WhitespaceNormalizationModule())
+            logging.debug("Added WhitespaceNormalizationModule to pipeline.")
         if self.parameters.get("normalize_unicode", False):
             self.pipeline.add_module(UnicodeNormalizationModule())
+            logging.debug("Added UnicodeNormalizationModule to pipeline.")
 
     def get_parameters(self):
         return self.parameters
 
     def process_file(self, text):
-        for module in self.pipeline.modules:
-            text = module.process(text)
-            if isinstance(text, list):
-                text = ' '.join(text)
-        return text
+        if not any(self.parameters.values()):
+            return text  # Return the original text without processing
+        processed_text = self.pipeline.process(text)
+        logging.debug("Processed text through pipeline.")
+        return processed_text
 
 class ProcessingWorker(QRunnable):
     def __init__(self, processor, file_path, signals):
@@ -299,6 +340,7 @@ class FileManager:
         temp_files = []
         new_files = []
         total_files = 0
+        
         for root, dirs, files in os.walk(directory):
             total_files += len([f for f in files if f.endswith(".txt")])
         start_time = time.time()
@@ -308,6 +350,7 @@ class FileManager:
                 if is_cancelled_callback():
                     signals.update_progress.emit(processed_files, total_files, 0, "Operation cancelled.")
                     return []
+                
                 if file.endswith(".txt"):
                     file_path = os.path.join(root, file)
                     normalized_path = os.path.normpath(file_path)
@@ -518,7 +561,7 @@ class ThemeManager:
 class AdvancedPatternBuilder(QWizard):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Advanced Pattern Builder") 
+        self.setWindowTitle("Advanced Pattern Builder")
         self.setWizardStyle(QWizard.ModernStyle)
         self.setMinimumSize(700, 500)
         self.addPage(self.createPatternPage())
@@ -526,12 +569,12 @@ class AdvancedPatternBuilder(QWizard):
 
     def createPatternPage(self):
         page = QWizardPage()
-        page.setTitle("Define Patterns") 
+        page.setTitle("Define Patterns")
         layout = QVBoxLayout()
 
         self.pattern_table = QTableWidget()
         self.pattern_table.setColumnCount(4)
-        self.pattern_table.setHorizontalHeaderLabels(["Start Condition", "End Condition Type", "End Condition", "Number Length"]) 
+        self.pattern_table.setHorizontalHeaderLabels(["Start Condition", "End Condition Type", "End Condition", "Number Length"])
         self.pattern_table.horizontalHeader().setStretchLastSection(False)
         self.pattern_table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         header = self.pattern_table.horizontalHeader()
@@ -560,7 +603,7 @@ class AdvancedPatternBuilder(QWizard):
 
         layout = QVBoxLayout()
         self.pattern_preview = QPlainTextEdit()
-        self.pattern_preview.setReadOnly(False)
+        self.pattern_preview.setReadOnly(True)
         layout.addWidget(QLabel("Pattern Preview:"))
         layout.addWidget(self.pattern_preview)
         self.explanation = QLabel()
@@ -597,14 +640,14 @@ class AdvancedPatternBuilder(QWizard):
     def updateEndCondition(self, row, index):
         end_edit = self.pattern_table.cellWidget(row, 2)
         number_length_edit = self.pattern_table.cellWidget(row, 3)
-        if index == 0:
+        if index == 0:  # Single Number
             end_edit.setEnabled(True)
             end_edit.setValidator(QIntValidator(0, 9, self))
             number_length_edit.setEnabled(False)
-        elif index == 1:
+        elif index == 1:  # Multiple Numbers
             end_edit.setEnabled(False)
             number_length_edit.setEnabled(True)
-        elif index == 2:
+        elif index == 2:  # Specific Word
             end_edit.setEnabled(True)
             end_edit.setValidator(None)
             number_length_edit.setEnabled(False)
@@ -612,16 +655,17 @@ class AdvancedPatternBuilder(QWizard):
     def getPatternData(self):
         pattern_data = []
         for row in range(self.pattern_table.rowCount()):
-            start = self.pattern_table.cellWidget(row, 0).text()
+            start = self.pattern_table.cellWidget(row, 0).text().strip()
             end_type = self.pattern_table.cellWidget(row, 1).currentText()
-            end = self.pattern_table.cellWidget(row, 2).text()
-            number_length = self.pattern_table.cellWidget(row, 3).text()
-            pattern_data.append({
-                "start": start,
-                "end_type": end_type,
-                "end": end,
-                "number_length": number_length
-            })
+            end = self.pattern_table.cellWidget(row, 2).text().strip()
+            number_length = self.pattern_table.cellWidget(row, 3).text().strip()
+            if start and end:
+                pattern_data.append({
+                    "start": start,
+                    "end_type": end_type,
+                    "end": end,
+                    "number_length": number_length
+                })
         return pattern_data
 
     def updatePattern(self):
@@ -632,19 +676,15 @@ class AdvancedPatternBuilder(QWizard):
                 start = re.escape(data["start"])
                 if data["end_type"] == "Single Number":
                     end = r'\d'
-                    pattern = rf"{start}[^{re.escape(end)}]*?{end}"
+                    pattern = rf"{start}.*?{end}"
                 elif data["end_type"] == "Multiple Numbers":
                     if not data["number_length"].isdigit():
                         raise ValueError("Number Length must be a positive integer for Multiple Numbers.")
                     end = r'\d{' + data["number_length"] + '}'
-                    pattern = rf"{start}[^{re.escape(end[-1])}]*?{end}"
-                else:
+                    pattern = rf"{start}.*?{end}"
+                else:  # Specific Word
                     end = re.escape(data["end"])
-                    if (end.endswith('\\)') or end.endswith('\\]') or end.endswith('\\}')) and len(end) >= 2:
-                        end_char = end[-2:]
-                        pattern = rf"{start}[^{end_char}]*?{end}"
-                    else:
-                        pattern = rf"{start}.*?{end}"
+                    pattern = rf"{start}.*?{end}"
                 patterns.append(pattern)
             final_pattern = '|'.join(patterns)
             if self.whole_words.isChecked():
@@ -653,14 +693,20 @@ class AdvancedPatternBuilder(QWizard):
             self.final_pattern = re.compile(final_pattern, flags)
             self.pattern_preview.setPlainText(final_pattern)
             self.explanation.setText(f"This pattern will match: {', '.join(patterns)}")
+            logging.debug(f"Final regex pattern: {final_pattern} with flags: {flags}")
         except re.error as e:
             QMessageBox.warning(self, "Invalid Pattern", f"The entered pattern is invalid:\n{str(e)}")
+            logging.error(f"Invalid regex pattern: {str(e)}")
         except ValueError as ve:
             QMessageBox.warning(self, "Invalid Input", str(ve))
+            logging.error(f"Invalid input for pattern: {str(ve)}")
 
     def testPattern(self):
         self.updatePattern()
         text = self.test_input.toPlainText()
+        if not hasattr(self, 'final_pattern') or not self.final_pattern:
+            QMessageBox.warning(self, "No Pattern", "Please define a valid pattern first.")
+            return
         try:
             matches = list(self.final_pattern.finditer(text))
             cursor = self.test_input.textCursor()
@@ -668,7 +714,7 @@ class AdvancedPatternBuilder(QWizard):
             text_format.setBackground(Qt.yellow)
             cursor.beginEditBlock()
             cursor.select(QTextCursor.Document)
-            cursor.setCharFormat(QTextCharFormat())
+            cursor.setCharFormat(QTextCharFormat())  # Clear existing formatting
             cursor.clearSelection()
             for match in matches:
                 cursor.setPosition(match.start())
@@ -677,13 +723,16 @@ class AdvancedPatternBuilder(QWizard):
             cursor.endEditBlock()
             if not matches:
                 QMessageBox.information(self, "No Matches", "The pattern did not match any text in the sample.")
+            else:
+                QMessageBox.information(self, "Matches Found", f"Found {len(matches)} matches.")
         except Exception as e:
             QMessageBox.warning(self, "Error", f"An error occurred while testing the pattern:\n{str(e)}")
+            logging.error(f"Error testing pattern: {str(e)}")
 
     def getPattern(self):
         self.updatePattern()
         return self.final_pattern
-
+        
 class RegexHighlighter(QSyntaxHighlighter):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -730,11 +779,14 @@ class ParametersDialog(QDialog):
         layout = QVBoxLayout(self)
         self.parameters = current_parameters.copy()
         self.pattern_data = self.parameters.get("pattern_data", [])
+
         tabs = QTabWidget()
         general_tab = QWidget()
         general_layout = QVBoxLayout(general_tab)
         advanced_tab = QWidget()
         advanced_layout = QVBoxLayout(advanced_tab)
+
+        # General Processing Options
         options = [
             ("remove_break_lines", "Remove break lines"),
             ("lowercase", "Lowercase"),
@@ -742,11 +794,15 @@ class ParametersDialog(QDialog):
             ("remove_diacritics", "Diacritic Removal"),
             ("normalize_spacing", "Normalize Spacing"),
             ("remove_stop_words", "Remove Stop Words"),
+            ("lemmatization", "Apply Lemmatization"),
+            ("sentence_tokenization", "Sentence Tokenization"),
+            ("word_tokenization", "Word Tokenization"),
             ("remove_greek", "Remove Greek letters"),
             ("remove_cyrillic", "Remove Cyrillic script"),
             ("remove_super_sub_script", "Remove superscript and subscript characters"),
             ("normalize_unicode", "Normalize Unicode"),
         ]
+
         vbox_layout = QVBoxLayout()
         for key, label in options:
             checkbox = QCheckBox(label)
@@ -756,6 +812,8 @@ class ParametersDialog(QDialog):
             vbox_layout.addWidget(checkbox)
         general_layout.addLayout(vbox_layout)
         general_layout.addStretch()
+
+        # Advanced Options (Patterns, Characters to Remove, etc.)
         regex_button = QPushButton("Set Pattern")
         regex_button.clicked.connect(self.open_regex_dialog)
         regex_button.setToolTip("Define advanced regex patterns")
@@ -777,9 +835,12 @@ class ParametersDialog(QDialog):
         advanced_layout.addWidget(QLabel("Selected items:"))
         advanced_layout.addWidget(self.char_list_widget)
         advanced_layout.addStretch()
+
         tabs.addTab(general_tab, "General")
         tabs.addTab(advanced_tab, "Advanced")
         layout.addWidget(tabs)
+
+        # Dialog Buttons
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
@@ -940,62 +1001,119 @@ class DirectoryLoadingWorker(QObject):
 class ReportWorker(QObject):
     finished = Signal(str, str)
 
-    def __init__(self, files, processed=False, processed_results=None):
+    def __init__(self, files, parameters, processed=False, processed_results=None):
         super().__init__()
         self.files = files
+        self.parameters = parameters
         self.processed = processed
         self.processed_results = processed_results
+        self.nlp = get_spacy_model()  # Initialize the spaCy model once
 
     def run(self):
         total_words = 0
         total_sentences = 0
         all_words = []
         total_size = 0
-        if self.processed and self.processed_results:
-            for file_path, processed_text in self.processed_results:
-                total_size += len(processed_text.encode('utf-8'))
-                total_words += len(processed_text.split())
-                total_sentences += len(re.split(r'[.!?]+', processed_text.strip()))
-                all_words.extend(processed_text.lower().split())
-        else:
-            for file_path in self.files:
-                total_size += os.path.getsize(file_path)
-                with open(file_path, 'r', encoding='utf-8', errors='ignore') as file:
-                    text = file.read()
-                    total_words += len(text.split())
-                    total_sentences += len(re.split(r'[.!?]+', text.strip()))
-                    all_words.extend(text.lower().split())
-        avg_words = total_words / len(self.files) if self.files else 0
-        avg_sentences = total_sentences / len(self.files) if self.files else 0
-        total_size_mb = total_size / (1024 * 1024)
-        avg_size_mb = total_size_mb / len(self.files) if self.files else 0
-        files_report = f"<h3>{'Processed ' if self.processed else ''}Files Report</h3>"
-        files_report += f"<p><b>Total Files:</b> {len(self.files)}</p>"
-        files_report += f"<p><b>Total Size:</b> {total_size_mb:.2f} MB</p>"
-        files_report += f"<p><b>Average Size per File:</b> {avg_size_mb:.2f} MB</p>"
-        if self.files:
-            earliest_mod = min(os.path.getmtime(file) for file in self.files)
-            latest_mod = max(os.path.getmtime(file) for file in self.files)
-            files_report += f"<p><b>Earliest File Modification:</b> {time.ctime(earliest_mod)}</p>"
-            files_report += f"<p><b>Latest File Modification:</b> {time.ctime(latest_mod)}</p>"
-        corpus_report = f"<h3>{'Processed ' if self.processed else ''}Corpus Report</h3>"
-        corpus_report += f"<p><b>Word Count:</b> {total_words}</p>"
-        corpus_report += f"<p><b>Average Word Count per File:</b> {avg_words:.2f}</p>"
-        corpus_report += f"<p><b>Sentences Count:</b> {total_sentences}</p>"
-        corpus_report += f"<p><b>Average Sentences Count per File:</b> {avg_sentences:.2f}</p>"
-        word_counts = Counter(word for word in all_words if word.isalnum() and len(word) > 1)
-        top_25_words = word_counts.most_common(25)
-        corpus_report += "<p><b>Word Frequency (Top 25):</b></p>"
-        corpus_report += "<ul>"
-        for word, count in top_25_words:
-            corpus_report += f"<li>{word}: {count}</li>"
-        corpus_report += "</ul>"
-        self.finished.emit(files_report, corpus_report)
-   
+
+        try:
+            if self.processed and self.processed_results:
+                # Use processed results directly
+                for file_path, processed_text in self.processed_results:
+                    total_size += len(processed_text.encode('utf-8'))
+
+                    doc = None  # To avoid redundant processing
+
+                    # Word Counting
+                    if self.parameters.get("word_tokenization"):
+                        tokens = processed_text.split()
+                        total_words += len(tokens)
+                        # Collect words for frequency analysis
+                        all_words.extend([word.lower() for word in tokens if word.isalpha()])
+                    else:
+                        doc = self.nlp(processed_text)
+                        tokens = [token for token in doc if not token.is_space]
+                        total_words += len(tokens)
+                        # Collect words for frequency analysis
+                        all_words.extend([token.lemma_.lower() for token in tokens if token.is_alpha])
+
+                    # Sentence Counting
+                    if self.parameters.get("sentence_tokenization"):
+                        sentences = processed_text.strip().split('\n')
+                        total_sentences += len(sentences)
+                    else:
+                        if doc is None:
+                            doc = self.nlp(processed_text)
+                        total_sentences += len(list(doc.sents))
+
+            else:
+                # Process files directly
+                for file_path in self.files:
+                    total_size += os.path.getsize(file_path)
+                    with open(file_path, 'r', encoding='utf-8', errors='ignore') as file:
+                        text = file.read()
+
+                    doc = self.nlp(text)
+
+                    # Word Counting (excluding spaces)
+                    tokens = [token for token in doc if not token.is_space]
+                    total_words += len(tokens)
+
+                    # Collect words for frequency analysis
+                    all_words.extend([token.lemma_.lower() for token in tokens if token.is_alpha])
+
+                    # Sentence Counting
+                    total_sentences += len(list(doc.sents))
+
+            # Calculate averages
+            num_files = len(self.files)
+            avg_words = total_words / num_files if num_files else 0
+            avg_sentences = total_sentences / num_files if num_files else 0
+            total_size_mb = total_size / (1024 * 1024)
+            avg_size_mb = total_size_mb / num_files if num_files else 0
+
+            # Generate the files report
+            files_report = f"<h3>{'Processed ' if self.processed else ''}Files Report</h3>"
+            files_report += f"<p><b>Total Files:</b> {num_files}</p>"
+            files_report += f"<p><b>Total Size:</b> {total_size_mb:.2f} MB</p>"
+            files_report += f"<p><b>Average Size per File:</b> {avg_size_mb:.2f} MB</p>"
+
+            if self.files:
+                # Get the earliest and latest modification times
+                earliest_mod = min(os.path.getmtime(file) for file in self.files)
+                latest_mod = max(os.path.getmtime(file) for file in self.files)
+                files_report += f"<p><b>Earliest File Modification:</b> {time.ctime(earliest_mod)}</p>"
+                files_report += f"<p><b>Latest File Modification:</b> {time.ctime(latest_mod)}</p>"
+
+            # Generate the corpus report
+            corpus_report = f"<h3>{'Processed ' if self.processed else ''}Corpus Report</h3>"
+            corpus_report += f"<p><b>Word Count:</b> {total_words}</p>"
+            corpus_report += f"<p><b>Average Word Count per File:</b> {avg_words:.2f}</p>"
+            corpus_report += f"<p><b>Sentences Count:</b> {total_sentences}</p>"
+            corpus_report += f"<p><b>Average Sentences Count per File:</b> {avg_sentences:.2f}</p>"
+
+            # Word frequency analysis
+            word_counts = Counter(word for word in all_words if word.isalnum() and len(word) > 1)
+            top_25_words = word_counts.most_common(25)
+
+            corpus_report += "<p><b>Word Frequency (Top 25):</b></p>"
+            corpus_report += "<ul>"
+            for word, count in top_25_words:
+                corpus_report += f"<li>{word}: {count}</li>"
+            corpus_report += "</ul>"
+
+            # Emit the finished signal with the generated reports
+            self.finished.emit(files_report, corpus_report)
+
+        except Exception as e:
+            # Handle any exceptions and log them
+            logging.exception(f"Error in ReportWorker: {str(e)}")
+            # Emit the finished signal with an error message
+            self.finished.emit("<p>Error generating report.</p>", "")
+
 class PreprocessorGUI(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.version = "0.5"
+        self.version = "0.6"
         self.file_manager = FileManager()
         self.theme_manager = ThemeManager()
         self.processor = DocumentProcessor()
@@ -1016,7 +1134,6 @@ class PreprocessorGUI(QMainWindow):
         self.lock = Lock()
         self.previous_search_term = ''
         self.init_ui()
-        ensure_nltk_data()
 
     def init_ui(self):
         self.setFocusPolicy(Qt.StrongFocus)
@@ -1359,9 +1476,7 @@ class PreprocessorGUI(QMainWindow):
     def handle_warning(self, file_path, warning):
         with self.lock:
             self.warnings.append((file_path, warning))
-            self.files_processed += 1
-        remaining_files = len(self.file_manager.get_files()) - self.files_processed
-        warning_message = f"Warning in {os.path.basename(file_path)}: {warning} | Remaining files: {remaining_files}"
+        warning_message = f"Warning in {os.path.basename(file_path)}: {warning}"
         self.update_progress_info(message=warning_message)
         logging.warning(f"Warning processing {file_path}: {warning}")
 
@@ -1395,7 +1510,22 @@ class PreprocessorGUI(QMainWindow):
                     with open(file_path, 'r', encoding='utf-8', errors='ignore') as file:
                         original_text = file.read()
                     self.original_text.appendPlainText(f"File: {file_path}\n\n{original_text}\n\n")
-                    self.processed_text.appendPlainText(f"File: {file_path}\n\n{processed_text}\n\n")
+                    
+                    # Format processed text based on tokenization
+                    if self.processor.parameters.get("sentence_tokenization"):
+                        
+                        # Display each sentence on a new line
+                        sentences = processed_text.split('\n')
+                        formatted_text = '\n'.join(sentences)
+                        self.processed_text.appendPlainText(f"File: {file_path}\n\n{formatted_text}\n\n")
+                    elif self.processor.parameters.get("word_tokenization"):
+                        
+                        # Display words separated by spaces
+                        words = processed_text.split(' ')
+                        formatted_text = ' '.join(words)
+                        self.processed_text.appendPlainText(f"File: {file_path}\n\n{formatted_text}\n\n")
+                    else:
+                        self.processed_text.appendPlainText(f"File: {file_path}\n\n{processed_text}\n\n")
                 except Exception as e:
                     logging.error(f"Error reading file {file_path}: {str(e)}")
             self.current_file = results[0][0]
@@ -1612,7 +1742,13 @@ class PreprocessorGUI(QMainWindow):
         if hasattr(self, 'report_thread') and self.report_thread.isRunning():
             self.report_thread.quit()
             self.report_thread.wait()
-        self.report_worker = ReportWorker(self.file_manager.get_files(), processed, processed_results)
+        parameters = self.processor.get_parameters()
+        self.report_worker = ReportWorker(
+            self.file_manager.get_files(),
+            parameters,
+            processed,
+            processed_results
+        )
         self.report_worker.moveToThread(self.report_thread)
         self.report_thread.started.connect(self.report_worker.run)
         self.report_worker.finished.connect(self.display_report)
