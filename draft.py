@@ -14,7 +14,8 @@ from PySide6.QtWidgets import (
     QTextEdit, QProgressBar, QFileDialog, QLabel, QListWidget,
     QTabWidget, QLineEdit, QDialog, QDialogButtonBox, QCheckBox, QMessageBox,
     QSplitter, QToolBar, QStatusBar, QListWidgetItem,
-    QPlainTextEdit, QWizard, QWizardPage, QTableWidget, QComboBox, QHeaderView
+    QPlainTextEdit, QWizard, QWizardPage, QTableWidget, QComboBox, QHeaderView,
+    QProgressDialog  # Added for progress dialogs
 )
 from PySide6.QtCore import Qt, Signal, QObject, QThread, QSize, QRunnable, QThreadPool, QUrl, QTimer
 from PySide6.QtGui import (
@@ -26,6 +27,9 @@ from collections import Counter
 import spacy
 from spacy.lang.en.stop_words import STOP_WORDS
 import threading
+import fitz
+import docx  
+import textract  
 
 def resource_path(relative_path): # Get absolute path to resource, works for dev and for PyInstaller
     if getattr(sys, 'frozen', False):
@@ -324,62 +328,157 @@ class ProcessingSignals(QObject):
     processing_complete = Signal(list, list)
     report_ready = Signal(str, str)
 
+class FileConverter:
+    def __init__(self):
+        pass
+
+    def convert_to_text(self, file_path):
+        ext = os.path.splitext(file_path)[1].lower()
+        if ext == '.pdf':
+            return self.convert_pdf_to_text(file_path)
+        elif ext == '.docx':
+            return self.convert_docx_to_text(file_path)
+        elif ext == '.doc':
+            return self.convert_doc_to_text(file_path)
+        elif ext == '.html' or ext == '.htm':
+            return self.convert_html_to_text(file_path)
+        else:
+            raise ValueError(f"Unsupported file format: {ext}")
+
+    def convert_pdf_to_text(self, file_path):
+        try:
+            text = ""
+            with fitz.open(file_path) as doc:
+                for page in doc:
+                    text += page.get_text()
+            return text
+        except Exception as e:
+            logging.error(f"Error converting PDF file {file_path}: {str(e)}")
+            raise
+
+    def convert_docx_to_text(self, file_path):
+        try:
+            doc = docx.Document(file_path)
+            full_text = []
+            for para in doc.paragraphs:
+                full_text.append(para.text)
+            return '\n'.join(full_text)
+        except Exception as e:
+            logging.error(f"Error converting DOCX file {file_path}: {str(e)}")
+            raise
+
+    def convert_doc_to_text(self, file_path):
+        try:
+            text = textract.process(file_path)
+            return text.decode('utf-8')
+        except Exception as e:
+            logging.error(f"Error converting DOC file {file_path}: {str(e)}")
+            raise
+
+    def convert_html_to_text(self, file_path):
+        try:
+            with open(file_path, 'r', encoding='utf-8', errors='ignore') as file:
+                html_content = file.read()
+            soup = BeautifulSoup(html_content, 'html.parser')
+            text = soup.get_text()
+            return text
+        except Exception as e:
+            logging.error(f"Error converting HTML file {file_path}: {str(e)}")
+            raise
+
 class FileManager:
+    ALLOWED_EXTENSIONS = {'.txt', '.pdf', '.doc', '.docx', '.html', '.htm'}
+    EXCLUDED_EXTENSIONS = {'.ini'}
+    EXCLUDED_FILENAMES = {'desktop.ini'}
+    
     def __init__(self):
         self.files = []
+        self.non_txt_files = []  # New list to keep track of non-txt files
 
-    def add_files(self, file_paths): 
-        new_files = [os.path.normpath(f) for f in file_paths if os.path.normpath(f) not in self.files]
-        self.files.extend(new_files)
-        return new_files
-
-    def add_directory(self, directory, signals, is_cancelled_callback): # Add all .txt files in a directory
-        temp_files = []
+    def add_files(self, file_paths):
         new_files = []
+        new_non_txt_files = []
+        for f in file_paths:
+            normalized_path = os.path.normpath(f)
+            if normalized_path not in self.files and normalized_path not in self.non_txt_files:
+                ext = os.path.splitext(f)[1].lower()
+                basename = os.path.basename(f).lower()
+                if ext in self.ALLOWED_EXTENSIONS:
+                    if ext == '.txt':
+                        new_files.append(normalized_path)
+                    else:
+                        new_non_txt_files.append(normalized_path)
+                elif ext in self.EXCLUDED_EXTENSIONS or basename in self.EXCLUDED_FILENAMES:
+                    # Silently ignore excluded files
+                    continue
+                else:
+                    # Log warning for other unsupported files
+                    logging.warning(f"Unsupported file type: {f}")
+        self.files.extend(new_files)
+        self.non_txt_files.extend(new_non_txt_files)
+        return new_files, new_non_txt_files
+
+
+    def add_directory(self, directory, signals, is_cancelled_callback):
+        temp_files = []
+        temp_non_txt_files = []
         total_files = 0
-        
         for root, dirs, files in os.walk(directory):
-            total_files += len([f for f in files if f.endswith(".txt")])
+            total_files += len(files)
         start_time = time.time()
         processed_files = 0
         for root, dirs, files in os.walk(directory):
             for file in files:
                 if is_cancelled_callback():
                     signals.update_progress.emit(processed_files, total_files, 0, "Operation cancelled.")
-                    return []
-                
-                if file.endswith(".txt"):
-                    file_path = os.path.join(root, file)
-                    normalized_path = os.path.normpath(file_path)
-                    if normalized_path not in self.files and normalized_path not in temp_files:
-                        try:
-                            time.sleep(random.uniform(0.01, 0.1))
+                    return [], []
+                file_path = os.path.join(root, file)
+                normalized_path = os.path.normpath(file_path)
+                if normalized_path not in self.files and normalized_path not in temp_files and normalized_path not in self.non_txt_files and normalized_path not in temp_non_txt_files:
+                    ext = os.path.splitext(file)[1].lower()
+                    basename = os.path.basename(file).lower()
+                    if ext in self.ALLOWED_EXTENSIONS:
+                        if ext == '.txt':
                             temp_files.append(normalized_path)
-                            new_files.append(normalized_path)
-                            processed_files += 1
-                            elapsed_time = time.time() - start_time
-                            estimated_remaining_time = (elapsed_time / processed_files) * (total_files - processed_files) if processed_files > 0 else 0
-                            signals.update_progress.emit(processed_files, total_files, estimated_remaining_time, None)
-                        except OSError as e:
-                            signals.update_progress.emit(processed_files, total_files, 0, f"OS error: {str(e)}")
-                        except Exception as e:
-                            signals.update_progress.emit(processed_files, total_files, 0, f"Unexpected error: {str(e)}")
+                        else:
+                            temp_non_txt_files.append(normalized_path)
+                    elif ext in self.EXCLUDED_EXTENSIONS or basename in self.EXCLUDED_FILENAMES:
+                        # Silently ignore excluded files
+                        continue
+                    else:
+                        # Log warning for other unsupported files
+                        logging.warning(f"Unsupported file type: {file_path}")
+                processed_files += 1
+                elapsed_time = time.time() - start_time
+                estimated_remaining_time = (elapsed_time / processed_files) * (total_files - processed_files) if processed_files > 0 else 0
+                signals.update_progress.emit(processed_files, total_files, estimated_remaining_time, None)
         self.files.extend(temp_files)
-        return new_files
+        self.non_txt_files.extend(temp_non_txt_files)
+        return temp_files, temp_non_txt_files
+
 
     def remove_files(self, file_paths):
         for file in file_paths:
             if file in self.files:
                 self.files.remove(file)
+            if file in self.non_txt_files:
+                self.non_txt_files.remove(file)
 
     def clear_files(self):
         self.files.clear()
+        self.non_txt_files.clear()
 
     def get_files(self):
+        return self.files + self.non_txt_files
+
+    def get_txt_files(self):
         return self.files
 
+    def get_non_txt_files(self):
+        return self.non_txt_files
+
     def get_total_size(self):
-        return sum(os.path.getsize(file) for file in self.files)
+        return sum(os.path.getsize(file) for file in self.get_files())
 
 class FileListWidget(QListWidget):
     files_added = Signal(list)
@@ -1083,6 +1182,9 @@ class ReportWorker(QObject):
             logging.exception(f"Error in ReportWorker: {str(e)}")
             self.finished.emit("<p>Error generating report.</p>", "")
 
+
+# In the PreprocessorGUI class, we need to modify several methods to handle the new functionality.
+
 class PreprocessorGUI(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -1107,6 +1209,8 @@ class PreprocessorGUI(QMainWindow):
         self.lock = Lock()
         self.previous_search_term = ''
         self.init_ui()
+        # Initialize FileConverter
+        self.file_converter = FileConverter()  # New attribute
 
     def init_ui(self):
         self.setFocusPolicy(Qt.StrongFocus)
@@ -1327,10 +1431,12 @@ class PreprocessorGUI(QMainWindow):
 
     def open_file(self):
         self.status_bar.clearMessage()
-        files, _ = QFileDialog.getOpenFileNames(self, "Select files", "", "Text Files (*.txt)")
+        files, _ = QFileDialog.getOpenFileNames(self, "Select files", "", "All Supported Files (*.txt *.pdf *.docx *.doc *.html *.htm);;Text Files (*.txt);;PDF Files (*.pdf);;Word Documents (*.docx *.doc);;HTML Files (*.html *.htm)")
         if files:
-            new_files = self.file_manager.add_files(files)
-            self.file_list.addItems(new_files)
+            new_txt_files, new_non_txt_files = self.file_manager.add_files(files)
+            self.file_list.addItems(new_txt_files)
+            if new_non_txt_files:
+                self.handle_non_txt_files(new_non_txt_files)
             self.update_status_bar()
             self.update_report()
             self.display_original_texts()
@@ -1360,19 +1466,58 @@ class PreprocessorGUI(QMainWindow):
             self.loading_thread.wait()
         self.loading_dialog.close()
 
-    def on_directory_loading_finished(self, new_files):
-        self.loading_thread.quit()
-        self.loading_thread.wait()
-        self.loading_dialog.close()
-        if new_files:
-            self.file_list.addItems(new_files)
-            self.update_status_bar()
-            self.update_report()
-            self.display_original_texts()
-        else:
-            self.status_bar.showMessage("Operation cancelled.", 5000)
+    def process_files(self):
+        """
+        Processes all selected text files using the defined processing pipeline.
+        Utilizes a thread pool to handle multiple files concurrently.
+        """
+        txt_files = self.file_manager.get_txt_files()
+        if not txt_files:
+            QMessageBox.warning(self, "No Files", "There are no text files to process.")
+            return
+
+        # Reset previous results
+        self.processed_results = []
+        self.errors = []
+        self.warnings = []
+        self.files_processed = 0
+        self.total_size = sum(os.path.getsize(file) for file in txt_files)
+
+        # Create a progress dialog
+        progress_dialog = QProgressDialog("Processing files...", "Cancel", 0, len(txt_files), self)
+        progress_dialog.setWindowTitle("Processing")
+        progress_dialog.setWindowModality(Qt.WindowModal)
+        progress_dialog.show()
+
+        # Connect the cancel button
+        progress_dialog.canceled.connect(self.cancel_processing)
+
+        # Iterate through each file and create a worker
+        for index, file_path in enumerate(txt_files, start=1):
+            if progress_dialog.wasCanceled():
+                break
+
+            worker = ProcessingWorker(self.processor, file_path, self.signals)
+            worker.setAutoDelete(True)
+
+            # Connect signals to handle results and errors
+            self.signals.result.connect(self.handle_result)
+            self.signals.error.connect(self.handle_error)
+            self.signals.warning.connect(self.handle_warning)
+            self.signals.finished.connect(lambda: self.on_worker_finished(progress_dialog, index))
+
+            # Start the worker in the thread pool
+            self.thread_pool.start(worker)
+
+        # If no files were processed (e.g., user canceled immediately)
+        if not self.thread_pool.activeThreadCount():
+            progress_dialog.close()
 
     def save_file(self):
+        """
+        Saves the processed text back to the original files.
+        Overwrites the original files after user confirmation.
+        """
         if self.processed_results:
             reply = QMessageBox.question(
                 self, 'Confirm Save',
@@ -1389,117 +1534,185 @@ class PreprocessorGUI(QMainWindow):
                         logging.error(f"Error saving file {file_path}: {str(e)}")
                         failed_files.append(file_path)
                 if failed_files:
-                    QMessageBox.warning(self, 'Save Completed with Errors',
-                                        f"Some files could not be saved:\n{', '.join(failed_files)}")
+                    QMessageBox.warning(
+                        self, 'Save Completed with Errors',
+                        f"Some files could not be saved:\n{', '.join(failed_files)}"
+                    )
                 else:
-                    QMessageBox.information(self, 'Save Successful', "All files have been saved successfully.")
+                    QMessageBox.information(
+                        self, 'Save Successful',
+                        "All files have been saved successfully."
+                    )
         else:
-            QMessageBox.warning(self, 'Save Failed', "No processed files to save.")
-
-    def process_files(self):
-        self.status_bar.clearMessage()
-        if not self.file_manager.get_files():
-            QMessageBox.warning(self, "No Files", "Please select files to process.")
-            return
-        self.processing_dialog = FileLoadingDialog(self, title="Processing Files...")
-        self.processing_dialog.show()
-        self.signals.update_progress.connect(self.processing_dialog.update_progress)
-        self.progress_bar.setValue(0)
-        self.progress_bar.setMaximum(len(self.file_manager.get_files()))
-        self.processed_results.clear()
-        self.errors.clear()
-        self.warnings.clear()
-        self.files_processed = 0
-        self.total_size = self.file_manager.get_total_size()
-        self.total_time = 0
-        self.processed_size = 0
-        for file in self.file_manager.get_files():
-            worker = ProcessingWorker(self.processor, file, self.signals)
-            self.thread_pool.start(worker)
-
-    def update_progress_info(self, message=None, error=None):
-        progress = (self.files_processed / len(self.file_manager.get_files())) * 100 if self.file_manager.get_files() else 0
-        self.progress_bar.setValue(int(progress))
-        avg_speed = self.processed_size / self.total_time if self.total_time > 0 else 0
-        status_message = f"Progress: {progress:.2f}% | Avg. Speed: {avg_speed:.2f} B/s"
-        if message:
-            status_message += f" | {message}"
-        if error:
-            status_message += f" | Error: {error}"
-        self.status_bar.showMessage(status_message)
+            QMessageBox.warning(
+                self, 'Save Failed',
+                "No processed files to save."
+            )
+   
+    def update_progress(self, current, total, time_remaining, error):
+        """
+        Updates the progress dialog based on signals from ProcessingWorkers.
+        """
+        if hasattr(self, 'progress_dialog') and self.progress_dialog:
+            self.progress_dialog.setValue(current)
+            if time_remaining > 0:
+                self.progress_dialog.setLabelText(f"Processing file {current} of {total}... Estimated time remaining: {time_remaining:.2f} seconds")
+            else:
+                self.progress_dialog.setLabelText(f"Processing file {current} of {total}...")
 
     def handle_result(self, file_path, processed_text, file_size, processing_time):
-        with self.lock:
-            self.processed_results.append((file_path, processed_text))
-            self.total_time += processing_time
-            self.files_processed += 1
-            self.processed_size += file_size
-        remaining_files = len(self.file_manager.get_files()) - self.files_processed
-        self.update_progress_info(message=f"Processed {os.path.basename(file_path)} | Remaining files: {remaining_files}")
+        """
+        Handles the result emitted by a ProcessingWorker.
+        """
+        self.processed_results.append((file_path, processed_text))
+        self.files_processed += 1
+        self.total_size += file_size
+        self.total_time += processing_time
+        logging.info(f"Processed file: {file_path} | Size: {file_size} bytes | Time: {processing_time:.2f} seconds")
+        self.update_report(processed=True, processed_results=self.processed_results)
 
-    def handle_error(self, file_path, error):
-        with self.lock:
-            self.errors.append((file_path, error))
-            self.files_processed += 1
-        remaining_files = len(self.file_manager.get_files()) - self.files_processed
-        error_message = f"Error in {os.path.basename(file_path)}: {error} | Remaining files: {remaining_files}"
-        self.update_progress_info(error=error_message)
-        logging.error(f"Error processing {file_path}: {error}")
+    def handle_error(self, file_path, error_message):
+        """
+        Handles errors emitted by a ProcessingWorker.
+        """
+        self.errors.append((file_path, error_message))
+        logging.error(f"Error processing file {file_path}: {error_message}")
+        QMessageBox.warning(self, "Processing Error", f"Error processing file {file_path}:\n{error_message}")
 
-    def handle_warning(self, file_path, warning):
-        with self.lock:
-            self.warnings.append((file_path, warning))
-        warning_message = f"Warning in {os.path.basename(file_path)}: {warning}"
-        self.update_progress_info(message=warning_message)
-        logging.warning(f"Warning processing {file_path}: {warning}")
-
-    def update_progress(self, current, total, time_remaining, error):
-        with self.lock:
-            self.files_processed = current
-        self.update_progress_info()
-        if error:
-            self.status_bar.showMessage(f"Error: {error}", 5000)
-            logging.error(f"Error during loading: {error}")
+    def handle_warning(self, file_path, warning_message):
+        """
+        Handles warnings emitted by a ProcessingWorker.
+        """
+        self.warnings.append((file_path, warning_message))
+        logging.warning(f"Warning processing file {file_path}: {warning_message}")
+        QMessageBox.warning(self, "Processing Warning", f"Warning processing file {file_path}:\n{warning_message}")
 
     def on_worker_finished(self):
-        if self.files_processed == len(self.file_manager.get_files()):
-            self.signals.processing_complete.emit(self.processed_results, self.warnings)
-            if self.errors:
-                error_msg = "\n".join([f"{file}: {error}" for file, error in self.errors])
-                QMessageBox.warning(self, 'Processing Completed with Errors', f"Errors occurred during processing:\n\n{error_msg}")
-            else:
-                self.status_bar.clearMessage()
+        """
+        Called when a ProcessingWorker finishes processing a file.
+        Checks if all workers are done and closes the progress dialog.
+        """
+        if self.files_processed + len(self.errors) >= len(self.file_manager.get_txt_files()):
+            self.progress_dialog.close()
             self.update_status_bar()
-            self.processing_dialog.close()
-            self.display_results(self.processed_results, self.warnings)
+            QMessageBox.information(self, "Processing Complete", f"Processed {self.files_processed} files with {len(self.errors)} errors.")
             self.update_report(processed=True, processed_results=self.processed_results)
+            self.signals.processing_complete.emit()  # Emit the processing complete signal
 
-    def display_results(self, results, warnings):
-        if results:
-            self.original_text.clear()
-            self.processed_text.clear()
-            for file_path, processed_text in results:
-                try:
-                    with open(file_path, 'r', encoding='utf-8', errors='ignore') as file:
-                        original_text = file.read()
-                    self.original_text.appendPlainText(f"File: {file_path}\n\n{original_text}\n\n")
-                    if self.processor.parameters.get("sentence_tokenization"):
-                        sentences = processed_text.split('\n')
-                        formatted_text = '\n'.join(sentences)
-                        self.processed_text.appendPlainText(f"File: {file_path}\n\n{formatted_text}\n\n")
-                    elif self.processor.parameters.get("word_tokenization"):
-                        words = processed_text.split(' ')
-                        formatted_text = ' '.join(words)
-                        self.processed_text.appendPlainText(f"File: {file_path}\n\n{formatted_text}\n\n")
-                    else:
-                        self.processed_text.appendPlainText(f"File: {file_path}\n\n{processed_text}\n\n")
-                except Exception as e:
-                    logging.error(f"Error reading file {file_path}: {str(e)}")
-            self.current_file = results[0][0]
-        if warnings:
-            warning_msg = "\n".join([f"{file}: {warning}" for file, warning in warnings])
-            QMessageBox.warning(self, 'Processing Warnings', f"Warnings during processing:\n\n{warning_msg}")
+    def cancel_processing(self):
+        """
+        Cancels the ongoing file processing by stopping all workers.
+        """
+        for worker in self.current_processing_workers:
+            worker.cancel()  # Set the cancellation flag
+        logging.info("Processing cancelled by the user.")
+        QMessageBox.information(self, "Processing Cancelled", "File processing has been cancelled.")
+        self.progress_dialog.close()
 
+    def on_processing_complete(self):
+        """
+        Handles the completion of the processing by re-enabling UI elements.
+        """
+        # Re-enable actions that were disabled during processing
+        self.new_action.setEnabled(True)
+        self.open_files_action.setEnabled(True)
+        self.open_directory_action.setEnabled(True)
+        self.save_action.setEnabled(True)
+        # Clear the list of current workers
+        self.current_processing_workers.clear()
+
+    def update_report(self, processed=False, processed_results=None):
+        """
+        Updates the summary and corpus reports based on the processed files.
+        If 'processed' is True, it uses the provided 'processed_results'.
+        """
+        if not self.file_manager.get_files():
+            self.files_report_text.clear()
+            self.corpus_report_text.clear()
+            return
+        if hasattr(self, 'report_thread') and self.report_thread.isRunning():
+            self.report_thread.quit()
+            self.report_thread.wait()
+        parameters = self.processor.get_parameters()
+        self.report_worker = ReportWorker(
+            self.file_manager.get_files(),
+            parameters,
+            processed,
+            processed_results
+        )
+        self.report_worker.moveToThread(self.report_thread)
+        self.report_thread.started.connect(self.report_worker.run)
+        self.report_worker.finished.connect(self.display_report)
+        self.report_thread.start()
+
+    def display_report(self, files_report, corpus_report):
+        self.files_report_text.setHtml(files_report)
+        self.corpus_report_text.setHtml(corpus_report)
+
+
+    def on_directory_loading_finished(self, new_files):
+        # Adjusted to handle new_files as a tuple
+        self.loading_thread.quit()
+        self.loading_thread.wait()
+        self.loading_dialog.close()
+        new_txt_files, new_non_txt_files = new_files
+        if new_txt_files:
+            self.file_list.addItems(new_txt_files)
+        if new_non_txt_files:
+            self.handle_non_txt_files(new_non_txt_files)
+        if new_txt_files or new_non_txt_files:
+            self.update_status_bar()
+            self.update_report()
+            self.display_original_texts()
+        else:
+            self.status_bar.showMessage("Operation cancelled.", 5000)
+
+    def handle_non_txt_files(self, non_txt_files):
+        # Notify the user about non-txt files
+        file_counts = {}
+        for file_path in non_txt_files:
+            ext = os.path.splitext(file_path)[1].lower()
+            file_counts[ext] = file_counts.get(ext, 0) + 1
+        message = "The following non-text files were found:\n"
+        for ext, count in file_counts.items():
+            message += f"{count} {ext.upper()} files\n"
+        message += "Do you want to convert them to text files?"
+        reply = QMessageBox.question(self, "Convert Files", message, QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
+        if reply == QMessageBox.Yes:
+            self.convert_non_txt_files(non_txt_files)
+
+    def convert_non_txt_files(self, non_txt_files):
+        # Create a progress dialog
+        progress_dialog = QProgressDialog("Converting files...", "Cancel", 0, len(non_txt_files), self)
+        progress_dialog.setWindowTitle("Converting Files")
+        progress_dialog.setWindowModality(Qt.WindowModal)
+        progress_dialog.show()
+        converted_files = []
+        for i, file_path in enumerate(non_txt_files):
+            if progress_dialog.wasCanceled():
+                break
+            try:
+                text = self.file_converter.convert_to_text(file_path)
+                # Save the converted text to a .txt file in the same directory
+                base, _ = os.path.splitext(file_path)
+                new_file_path = base + "_converted.txt"
+                with open(new_file_path, 'w', encoding='utf-8') as f:
+                    f.write(text)
+                # Add the new .txt file to the file manager
+                self.file_manager.add_files([new_file_path])
+                self.file_list.addItem(new_file_path)
+                converted_files.append(new_file_path)
+            except Exception as e:
+                logging.error(f"Error converting file {file_path}: {str(e)}")
+                QMessageBox.warning(self, "Conversion Error", f"Error converting file {file_path}:\n{str(e)}")
+            progress_dialog.setValue(i + 1)
+        progress_dialog.close()
+        if converted_files:
+            QMessageBox.information(self, "Conversion Complete", "All files have been converted and added to the list.")
+        else:
+            QMessageBox.warning(self, "Conversion Cancelled", "The conversion process was cancelled.")
+
+    # Modify display_original_texts to include newly converted files
     def display_original_texts(self):
         if self.file_manager.get_files():
             self.original_text.clear()
@@ -1517,7 +1730,6 @@ class PreprocessorGUI(QMainWindow):
             self.original_text.clear()
             self.processed_text.clear()
             self.current_file = None
-
     def start_new_cleaning(self):
         self.file_manager.clear_files()
         self.file_list.clear()
