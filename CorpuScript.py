@@ -27,7 +27,7 @@ import spacy
 from spacy.lang.en.stop_words import STOP_WORDS
 import threading
 
-def resource_path(relative_path): # Get absolute path to resource, works for dev and for PyInstaller
+def resource_path(relative_path): 
     if getattr(sys, 'frozen', False):
         base_path = getattr(sys, '_MEIPASS', os.path.dirname(sys.executable))
     else:
@@ -72,6 +72,15 @@ class WhitespaceNormalizationModule(PreprocessingModule):
 class LineBreakRemovalModule(PreprocessingModule):
     def process(self, text):
         return text.replace('\n', ' ')
+
+class BibliographicalReferenceRemovalModule(PreprocessingModule):
+    def __init__(self):
+        super().__init__()
+        # Regex pattern to match bibliographical references
+        self.pattern = re.compile(r'\([^()]*\b\d{4}\b[^()]*\)')
+    
+    def process(self, text):
+        return self.pattern.sub('', text)
 
 class LowercaseModule(PreprocessingModule):
     def process(self, text):
@@ -177,7 +186,7 @@ class PreprocessingPipeline:
                 text = ' '.join(text)
         return text.strip()
 
-class DocumentProcessor: # Singleton class
+class DocumentProcessor: 
     def __init__(self):
         self.parameters = {
             "remove_break_lines": False,
@@ -187,12 +196,13 @@ class DocumentProcessor: # Singleton class
             "sentence_tokenization": False,
             "word_tokenization": False,
             "remove_stop_words": False,
-            "regex_pattern": "",  # Use singular to match the rest of your code
+            "regex_pattern": "", 
             "strip_html": False,
             "remove_diacritics": False,
             "remove_greek": False,
             "remove_cyrillic": False,
             "remove_super_sub_script": False,
+            "remove_bibliographical_references": False,  
             "normalize_spacing": False,
             "normalize_unicode": False,
         }
@@ -267,13 +277,16 @@ class DocumentProcessor: # Singleton class
         if self.parameters.get("normalize_unicode", False):
             self.pipeline.add_module(UnicodeNormalizationModule())
             logging.debug("Added UnicodeNormalizationModule to pipeline.")
+        if self.parameters["remove_bibliographical_references"]:
+            self.pipeline.add_module(BibliographicalReferenceRemovalModule())
+            logging.debug("Added BibliographicalReferenceRemovalModule to pipeline.")            
 
     def get_parameters(self):
         return self.parameters
 
     def process_file(self, text):
         if not any(self.parameters.values()):
-            return text  # Return the original text without processing
+            return text  
         processed_text = self.pipeline.process(text)
         logging.debug("Processed text through pipeline.")
         return processed_text
@@ -333,7 +346,7 @@ class FileManager:
         self.files.extend(new_files)
         return new_files
 
-    def add_directory(self, directory, signals, is_cancelled_callback): # Add all .txt files in a directory
+    def add_directory(self, directory, signals, is_cancelled_callback): 
         temp_files = []
         new_files = []
         total_files = 0
@@ -632,14 +645,14 @@ class AdvancedPatternBuilder(QWizard):
     def updateEndCondition(self, row, index):
         end_edit = self.pattern_table.cellWidget(row, 2)
         number_length_edit = self.pattern_table.cellWidget(row, 3)
-        if index == 0:  # Single Number
+        if index == 0:  
             end_edit.setEnabled(True)
             end_edit.setValidator(QIntValidator(0, 9, self))
             number_length_edit.setEnabled(False)
-        elif index == 1:  # Multiple Numbers
+        elif index == 1:  
             end_edit.setEnabled(False)
             number_length_edit.setEnabled(True)
-        elif index == 2:  # Specific Word
+        elif index == 2:  
             end_edit.setEnabled(True)
             end_edit.setValidator(None)
             number_length_edit.setEnabled(False)
@@ -791,6 +804,7 @@ class ParametersDialog(QDialog):
             ("remove_greek", "Remove Greek letters"),
             ("remove_cyrillic", "Remove Cyrillic script"),
             ("remove_super_sub_script", "Remove superscript and subscript characters"),
+            ("remove_bibliographical_references", "Remove bibliographical references throughout the text.") ,  
             ("normalize_unicode", "Normalize Unicode"),
         ]
 
@@ -1086,7 +1100,7 @@ class ReportWorker(QObject):
 class PreprocessorGUI(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.version = "0.6"
+        self.version = "0.7"
         self.file_manager = FileManager()
         self.theme_manager = ThemeManager()
         self.processor = DocumentProcessor()

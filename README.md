@@ -46,6 +46,7 @@ CorpuScript provides a rich array of text cleaning options, giving users fine-gr
 - **Lowercase Conversion:** Standardizes text by converting all characters to lowercase, ensuring consistency in text analysis.
 - **Whitespace Normalization:** Ensures uniform spacing throughout the text by removing redundant spaces, tabs, and other whitespace characters.
 - **Line Break Removal:** Merges multiple lines to create continuous text, useful for certain types of analysis that require unbroken text streams.
+- **Unicode Normalization:** Converts text into a standard Unicode format (e.g., NFC, NFD, NFKC, NFKD), ensuring consistency in character representation across different languages and scripts.
 
 #### Character and Symbol Management
 
@@ -58,12 +59,14 @@ CorpuScript provides a rich array of text cleaning options, giving users fine-gr
 #### Content Extraction and Cleaning
 
 - **HTML Tag Stripping:** Removes HTML tags to extract plain text content from web-scraped or marked-up documents.
+- **Bibliographical Reference Removal:** Automatically identifies and removes in-text bibliographical references (e.g., citations like `(Smith, 2020)`), cleaning up the text for analysis.
 - **Custom Regular Expression Filtering:** Allows users to define and apply custom patterns for advanced text filtering and extraction.
 
 #### Linguistic Processing
 
-- **Lemmatization:** Reduces words to their base forms (lemmas) to facilitate more accurate linguistic analysis.
-- **Tokenization:** Splits text into individual words or tokens, a fundamental step for many NLP tasks.
+- **Lemmatization:** Reduces words to their base or dictionary form (lemmas), aiding in linguistic analysis by grouping together different forms of a word.
+- **Sentence Tokenization:** Splits text into individual sentences, fundamental for tasks like sentiment analysis and syntactic parsing.
+- **Word Tokenization:** Divides text into individual words or tokens, essential for word-level analysis and processing.
 - **Stop Word Removal:** Excludes common, non-informative words (e.g., "the", "and") to focus on meaningful content.
 
 ### 2. Batch Processing
@@ -112,16 +115,6 @@ After processing, CorpuScript generates a comprehensive summary report that prov
 - Export preprocessed data in formats compatible with popular corpus analysis tools.
 - Integration capabilities with other NLP pipelines and workflows.
 
-### 9. Multilingual Support
-
-- Built-in support for processing texts in multiple languages.
-- Customizable language-specific preprocessing rules.
-
-### 10. Continuous Updates and Community Support
-
-- Regular updates to incorporate the latest advancements in corpus linguistics and NLP.
-- Active user community for sharing best practices and custom preprocessing recipes.
-
 ## Installation
 
 CorpuScript is distributed as a standalone executable installer for Windows.
@@ -154,16 +147,16 @@ MIT License
 Copyright (c) 2024 Jhonatan Henrique Lopes Alves
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
+of this software and associated documentation files (CorpuScript), to deal
 in the Software without restriction, including without limitation the rights
 to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
+copies of the Software, and to permit persons to whom CorpuScript is
 furnished to do so, subject to the following conditions:
 
 The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+copies or substantial portions of CorpuScript.
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+CORPUSCRIPT IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
 FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
 AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
