@@ -33,6 +33,11 @@
             margin-top: 1.2em;
             margin-bottom: 0.5em;
         }
+        h4 {
+            font-size: 1.2em;
+            margin-top: 1em;
+            margin-bottom: 0.3em;
+        }
         p {
             line-height: 1.6;
             margin-bottom: 1em;
@@ -145,6 +150,9 @@
             h3 {
                 font-size: 1.1em;
             }
+            h4 {
+                font-size: 1em;
+            }
         }
     </style>
 </head>
@@ -239,6 +247,7 @@
     <hr>
     <h3 id="22-general-tab">2.2. General Tab</h3>
     <p>The <strong>General</strong> tab contains a series of checkboxes that enable or disable specific preprocessing tasks. Each option serves a distinct purpose in cleaning and preparing your text data.</p>
+        
     <h4 id="221-remove-line-breaks">2.2.1. Remove Line Breaks</h4>
     <ul>
         <li><strong>Description:</strong> Eliminates all newline characters (<code>\n</code>) from the text, converting multi-line text into a single continuous line.</li>
@@ -299,6 +308,35 @@
         <li><strong>Use Case:</strong> Essential for maintaining data integrity, especially when dealing with text from multiple sources or languages, preventing discrepancies caused by different Unicode representations.</li>
         <li><strong>How to Use:</strong> Check the box labeled <strong>"Normalize Unicode"</strong>. The text will be normalized to NFKC form during preprocessing.</li>
     </ul>
+        
+    <h4 id="2211-lemmatization">2.2.11. Lemmatization</h4>
+    <ul>
+        <li><strong>Description:</strong> Reduces words to their base or dictionary form (lemmas), aiding in linguistic analysis by grouping together different forms of a word.</li>
+        <li><strong>Use Case:</strong> Improves the accuracy of analyses such as frequency counts, sentiment analysis, and topic modeling by treating different grammatical forms of a word as a single entity.</li>
+        <li><strong>How to Use:</strong> Check the box labeled <strong>"Lemmatization"</strong>. The preprocessing pipeline will automatically lemmatize all words during processing.</li>
+    </ul>
+    
+    <h4 id="2212-sentence-tokenization">2.2.12. Sentence Tokenization</h4>
+    <ul>
+        <li><strong>Description:</strong> Splits the text into individual sentences, facilitating sentence-level analyses and processing.</li>
+        <li><strong>Use Case:</strong> Essential for tasks such as sentiment analysis, syntactic parsing, and any application requiring sentence boundaries.</li>
+        <li><strong>How to Use:</strong> Enable this option by checking the <strong>"Sentence Tokenization"</strong> box. The text will be divided into sentences during preprocessing.</li>
+    </ul>
+    
+    <h4 id="2213-word-tokenization">2.2.13. Word Tokenization</h4>
+    <ul>
+        <li><strong>Description:</strong> Divides the text into individual words or tokens, essential for word-level analysis and processing.</li>
+        <li><strong>Use Case:</strong> Fundamental for most Natural Language Processing (NLP) tasks, including frequency analysis, machine learning models, and more.</li>
+        <li><strong>How to Use:</strong> Check the box labeled <strong>"Word Tokenization"</strong>. The text will be split into words during preprocessing.</li>
+    </ul>
+    
+    <h4 id="2214-remove-bibliographical-references">2.2.14. Remove Bibliographical References</h4>
+    <ul>
+        <li><strong>Description:</strong> Automatically identifies and removes in-text bibliographical references (e.g., citations like <code>(Smith, 2020)</code>), cleaning up the text for analysis.</li>
+        <li><strong>Use Case:</strong> Essential for academic texts and research papers where citations can interfere with textual analysis by introducing non-content elements.</li>
+        <li><strong>How to Use:</strong> Enable this option by checking the <strong>"Remove Bibliographical References"</strong> box. The preprocessing pipeline will remove all bibliographical references during processing.</li>
+    </ul>
+    
     <hr>
     <h3 id="23-advanced-tab">2.3. Advanced Tab</h3>
     <p>The <strong>Advanced</strong> tab offers more granular control over the preprocessing process, allowing users to define custom patterns and specify additional characters to remove. This is particularly useful for handling specialized text cleaning requirements that go beyond the general options provided.</p>
