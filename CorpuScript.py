@@ -308,7 +308,11 @@ class ProcessingWorker(QRunnable):
         try:
             start_time = time.time()
             with open(self.file_path, 'r', encoding='utf-8', errors='ignore') as file:
-                text = file.read()
+                original_text = file.read()  # Store original text
+            processed_text = self.processor.process_file(original_text)
+            end_time = time.time()
+            processing_time = end_time - start_time
+            self.signals.result.emit(self.file_path, original_text, processed_text, file_size, processing_time) # Emit original text too
         except FileNotFoundError as e:
             self.signals.error.emit(self.file_path, f"File not found: {str(e)}")
             return
@@ -318,18 +322,11 @@ class ProcessingWorker(QRunnable):
         except Exception as e:
             self.signals.error.emit(self.file_path, f"Unexpected error while reading file: {str(e)}")
             return
-        try:
-            processed_text = self.processor.process_file(text)
-            end_time = time.time()
-            processing_time = end_time - start_time
-            self.signals.result.emit(self.file_path, processed_text, file_size, processing_time)
-        except Exception as e:
-            self.signals.error.emit(self.file_path, f"Error processing file: {str(e)}")
         finally:
             self.signals.finished.emit()
 
 class ProcessingSignals(QObject):
-    result = Signal(str, str, int, float)
+    result = Signal(str, str, str, int, float) # Signal now includes original text
     error = Signal(str, str)
     warning = Signal(str, str)
     finished = Signal()
@@ -804,7 +801,7 @@ class ParametersDialog(QDialog):
             ("remove_greek", "Remove Greek letters"),
             ("remove_cyrillic", "Remove Cyrillic script"),
             ("remove_super_sub_script", "Remove superscript and subscript characters"),
-            ("remove_bibliographical_references", "Remove bibliographical references throughout the text.") ,  
+            ("remove_bibliographical_references", "Remove bibliographical references throughout the text") ,  
             ("normalize_unicode", "Normalize Unicode"),
         ]
 
@@ -1020,8 +1017,8 @@ class ReportWorker(QObject):
 
         try:
             if self.processed and self.processed_results:
-                for file_path, processed_text in self.processed_results:
-                    total_size += len(processed_text.encode('utf-8'))
+                for file_path, original_text, processed_text in self.processed_results:  # Correct unpacking here!
+                    total_size += len(processed_text.encode('utf-8'))  # Use processed text size
 
                     doc = None  
 
@@ -1095,7 +1092,7 @@ class ReportWorker(QObject):
             self.finished.emit(files_report, corpus_report)
         except Exception as e:
             logging.exception(f"Error in ReportWorker: {str(e)}")
-            self.finished.emit("<p>Error generating report.</p>", "")
+            self.finished.emit("<p>Error generating report.</p>", "")  # Signal error
 
 class PreprocessorGUI(QMainWindow):
     def __init__(self):
@@ -1442,9 +1439,9 @@ class PreprocessorGUI(QMainWindow):
             status_message += f" | Error: {error}"
         self.status_bar.showMessage(status_message)
 
-    def handle_result(self, file_path, processed_text, file_size, processing_time):
+    def handle_result(self, file_path, original_text, processed_text, file_size, processing_time):  # Modified
         with self.lock:
-            self.processed_results.append((file_path, processed_text))
+            self.processed_results.append((file_path, original_text, processed_text))  # Store original text with results
             self.total_time += processing_time
             self.files_processed += 1
             self.processed_size += file_size
@@ -1490,26 +1487,29 @@ class PreprocessorGUI(QMainWindow):
 
     def display_results(self, results, warnings):
         if results:
-            self.original_text.clear()
-            self.processed_text.clear()
-            for file_path, processed_text in results:
-                try:
-                    with open(file_path, 'r', encoding='utf-8', errors='ignore') as file:
-                        original_text = file.read()
-                    self.original_text.appendPlainText(f"File: {file_path}\n\n{original_text}\n\n")
-                    if self.processor.parameters.get("sentence_tokenization"):
-                        sentences = processed_text.split('\n')
-                        formatted_text = '\n'.join(sentences)
-                        self.processed_text.appendPlainText(f"File: {file_path}\n\n{formatted_text}\n\n")
-                    elif self.processor.parameters.get("word_tokenization"):
-                        words = processed_text.split(' ')
-                        formatted_text = ' '.join(words)
-                        self.processed_text.appendPlainText(f"File: {file_path}\n\n{formatted_text}\n\n")
-                    else:
-                        self.processed_text.appendPlainText(f"File: {file_path}\n\n{processed_text}\n\n")
-                except Exception as e:
-                    logging.error(f"Error reading file {file_path}: {str(e)}")
-            self.current_file = results[0][0]
+            self.original_text.setPlainText("")  # Clear once
+            self.processed_text.setPlainText("")  # Clear once
+            for file_path, original_text, processed_text in results:  # Unpack all three values!
+                # Optimized appending for original text:
+                self.original_text.moveCursor(QTextCursor.End)
+                original_cursor = self.original_text.textCursor()
+                original_cursor.insertText(f"File: {file_path}\n\n{original_text}\n\n")
+
+                self.processed_text.moveCursor(QTextCursor.End)  # Move cursor to the end before inserting
+                cursor = self.processed_text.textCursor()
+                cursor.insertText(f"File: {file_path}\n\n")
+
+                if self.processor.parameters.get("sentence_tokenization"):
+                    sentences = processed_text.split('\n')
+                    formatted_text = '\n'.join(sentences)
+                    cursor.insertText(formatted_text + "\n\n")  # Insert text at the cursor position
+                elif self.processor.parameters.get("word_tokenization"):
+                    words = processed_text.split()
+                    formatted_text = ' '.join(words)
+                    cursor.insertText(formatted_text + "\n\n")
+                else:
+                    cursor.insertText(processed_text + "\n\n")
+
         if warnings:
             warning_msg = "\n".join([f"{file}: {warning}" for file, warning in warnings])
             QMessageBox.warning(self, 'Processing Warnings', f"Warnings during processing:\n\n{warning_msg}")
