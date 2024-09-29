@@ -1351,7 +1351,6 @@ class PreprocessorGUI(QMainWindow):
         report_widget.setMaximumHeight(250)
 
         return report_widget
-
     
     def setup_status_bar(self):
         self.status_bar = QStatusBar()
@@ -1436,11 +1435,10 @@ class PreprocessorGUI(QMainWindow):
         if new_files:
             self.file_list.addItems(new_files)
             self.update_status_bar()
-            # Start processing files immediately
             self.process_files()
         else:
             self.status_bar.showMessage("Operation cancelled or no new files added.", 5000)
-
+    
     def save_file(self):
         if self.processed_results:
             reply = QMessageBox.question(
@@ -1450,7 +1448,7 @@ class PreprocessorGUI(QMainWindow):
             )
             if reply == QMessageBox.Yes:
                 failed_files = []
-                for file_path, processed_text in self.processed_results:
+                for file_path, _, processed_text in self.processed_results:
                     try:
                         with open(file_path, 'w', encoding='utf-8') as file:
                             file.write(processed_text)
@@ -1464,6 +1462,7 @@ class PreprocessorGUI(QMainWindow):
                     QMessageBox.information(self, 'Save Successful', "All files have been saved successfully.")
         else:
             QMessageBox.warning(self, 'Save Failed', "No processed files to save.")
+    
     def process_files(self):
         self.status_bar.clearMessage()
         if not self.file_manager.get_files():
@@ -1485,7 +1484,6 @@ class PreprocessorGUI(QMainWindow):
         for file in self.file_manager.get_files():
             worker = ProcessingWorker(self.processor, file, self.signals)
             self.thread_pool.start(worker)
-
 
     def update_progress_info(self, message=None, error=None):
         progress = (self.files_processed / len(self.file_manager.get_files())) * 100 if self.file_manager.get_files() else 0
@@ -1703,7 +1701,6 @@ class PreprocessorGUI(QMainWindow):
             selection = QTextEdit.ExtraSelection()
             selection.cursor = match_cursor
 
-            # Apply different formatting for the current index
             if len(self.search_results) == current_index:
                 selection.format = current_highlight_format
             else:
@@ -1820,6 +1817,7 @@ class PreprocessorGUI(QMainWindow):
 
     def on_report_finished(self):
         logging.info("Report generation finished")
+        self.report_thread = None
 
     def display_report(self, report_html):
         self.summary_text.setHtml(report_html)
@@ -1827,7 +1825,6 @@ class PreprocessorGUI(QMainWindow):
         if hasattr(self, 'loading_movie'):
             self.loading_movie.stop()
         logging.info("Report displayed successfully")
-
 
     def check_for_updates(self, manual_trigger=False):
         try:
@@ -1862,16 +1859,19 @@ class PreprocessorGUI(QMainWindow):
             QMessageBox.warning(self, 'Error', f"An error occurred while checking for updates:\n{str(e)}")
 
     def closeEvent(self, event):
-        # Stop all running threads
         self.thread_pool.clear()
         self.thread_pool.waitForDone()
 
         if hasattr(self, 'loading_thread') and self.loading_thread.isRunning():
             self.cancel_loading()
 
-        if hasattr(self, 'report_thread') and self.report_thread.isRunning():
-            self.report_thread.quit()
-            self.report_thread.wait()
+        if hasattr(self, 'report_thread') and self.report_thread is not None:
+            try:
+                if self.report_thread.isRunning():
+                    self.report_thread.quit()
+                    self.report_thread.wait()
+            except RuntimeError:
+                pass 
 
         event.accept()
 
