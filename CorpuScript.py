@@ -14,15 +14,14 @@ from PySide6.QtWidgets import (
     QTextEdit, QProgressBar, QFileDialog, QLabel, QListWidget,
     QTabWidget, QLineEdit, QDialog, QDialogButtonBox, QCheckBox, QMessageBox,
     QSplitter, QToolBar, QStatusBar, QListWidgetItem,
-    QPlainTextEdit, QWizard, QWizardPage, QTableWidget, QComboBox, QHeaderView, QScrollArea
+    QPlainTextEdit, QWizard, QWizardPage, QTableWidget, QComboBox, QHeaderView, QScrollArea, QStackedWidget
 )
 from PySide6.QtCore import Qt, Signal, QObject, QThread, QSize, QRunnable, QThreadPool, QUrl, QTimer, QRegularExpression
 from PySide6.QtGui import (
-    QIcon, QFont, QColor, QAction, QPainter, QIntValidator, QTextCursor, QTextCharFormat, QSyntaxHighlighter, QDesktopServices, QKeySequence, QFontDatabase
+    QIcon, QFont, QColor, QAction, QPainter, QIntValidator, QTextCursor, QTextCharFormat, QSyntaxHighlighter, QDesktopServices, QKeySequence, QFontDatabase, QMovie
 )
 from PySide6.QtWebEngineWidgets import QWebEngineView
 from bs4 import BeautifulSoup
-from collections import Counter
 import spacy
 from spacy.lang.en.stop_words import STOP_WORDS
 import threading
@@ -1016,7 +1015,11 @@ class DirectoryLoadingWorker(QObject):
     def is_cancelled(self):
         return self._is_cancelled
 
-class ReportWorker(QRunnable):
+class ReportWorker(QObject):
+    result = Signal(str)
+    error = Signal(str)
+    finished = Signal()
+
     def __init__(self, files, parameters, processed=False, processed_results=None):
         super().__init__()
         self.files = files
@@ -1024,7 +1027,6 @@ class ReportWorker(QRunnable):
         self.processed = processed
         self.processed_results = processed_results
         self.nlp = get_spacy_model()
-        self.signals = WorkerSignals()
 
     def run(self):
         try:
@@ -1035,7 +1037,6 @@ class ReportWorker(QRunnable):
             if self.processed and self.processed_results:
                 for file_path, original_text, processed_text in self.processed_results:
                     total_size += len(processed_text.encode('utf-8'))
-
                     if self.parameters.get("word_tokenization"):
                         tokens = processed_text.split()
                         total_words += len(tokens)
@@ -1045,7 +1046,6 @@ class ReportWorker(QRunnable):
                         tokens = [token for token in doc if not token.is_space]
                         total_words += len(tokens)
                         all_words.extend([token.lemma_.lower() for token in tokens if token.is_alpha])
-
             else:
                 for file_path in self.files:
                     total_size += os.path.getsize(file_path)
@@ -1089,11 +1089,11 @@ class ReportWorker(QRunnable):
                 </body>
                 </html>
             """
-            self.signals.result.emit(report)
+            self.result.emit(report)
         except Exception as e:
-            self.signals.error.emit(str(e))
+            self.error.emit(str(e))
         finally:
-            self.signals.finished.emit()
+            self.finished.emit()
 
 class WorkerSignals(QObject):
     result = Signal(str)
@@ -1310,6 +1310,22 @@ class PreprocessorGUI(QMainWindow):
         """)
         report_layout.addWidget(report_label)
 
+        # Add the loading label
+        self.loading_label = QLabel()
+        self.loading_label.setAlignment(Qt.AlignCenter)
+        self.loading_label.setVisible(False)
+
+        # Load the loading.gif
+        loading_gif_path = resource_path("loading.gif")
+        if os.path.exists(loading_gif_path):
+            self.loading_movie = QMovie(loading_gif_path)
+            self.loading_label.setMovie(self.loading_movie)
+            self.loading_movie.start()
+        else:
+            # If loading.gif not found, use placeholder text
+            self.loading_label.setText("Generating report, please wait...")
+            self.loading_label.setStyleSheet("color: #FFFFFF; font-size: 14px;")
+
         self.summary_text = QTextEdit()
         self.summary_text.setReadOnly(True)
         self.summary_text.setFont(QFont("Roboto", 12))
@@ -1321,12 +1337,21 @@ class PreprocessorGUI(QMainWindow):
             padding: 3px;
         """)
 
-        report_layout.addWidget(self.summary_text)
+        # Create a stack to hold the loading label and summary text
+        self.summary_stack = QStackedWidget()
+        self.summary_stack.addWidget(self.loading_label)
+        self.summary_stack.addWidget(self.summary_text)
+
+        # Initially show the summary_text
+        self.summary_stack.setCurrentWidget(self.summary_text)
+
+        report_layout.addWidget(self.summary_stack)
 
         # Increase the maximum height for the report widget
-        report_widget.setMaximumHeight(250)  
+        report_widget.setMaximumHeight(250)
 
         return report_widget
+
     
     def setup_status_bar(self):
         self.status_bar = QStatusBar()
@@ -1371,10 +1396,13 @@ class PreprocessorGUI(QMainWindow):
         files, _ = QFileDialog.getOpenFileNames(self, "Select files", "", "Text Files (*.txt)")
         if files:
             new_files = self.file_manager.add_files(files)
-            self.file_list.addItems(new_files)
-            self.update_status_bar()
-            self.update_report()
-            self.display_original_texts()
+            if new_files:
+                self.file_list.addItems(new_files)
+                self.update_status_bar()
+                # Start processing files immediately
+                self.process_files()
+            else:
+                QMessageBox.information(self, "No New Files", "All selected files are already loaded.")
 
     def open_directory(self):
         self.status_bar.clearMessage()
@@ -1408,10 +1436,10 @@ class PreprocessorGUI(QMainWindow):
         if new_files:
             self.file_list.addItems(new_files)
             self.update_status_bar()
-            self.update_report()
-            self.display_original_texts()
+            # Start processing files immediately
+            self.process_files()
         else:
-            self.status_bar.showMessage("Operation cancelled.", 5000)
+            self.status_bar.showMessage("Operation cancelled or no new files added.", 5000)
 
     def save_file(self):
         if self.processed_results:
@@ -1436,7 +1464,6 @@ class PreprocessorGUI(QMainWindow):
                     QMessageBox.information(self, 'Save Successful', "All files have been saved successfully.")
         else:
             QMessageBox.warning(self, 'Save Failed', "No processed files to save.")
-
     def process_files(self):
         self.status_bar.clearMessage()
         if not self.file_manager.get_files():
@@ -1454,9 +1481,11 @@ class PreprocessorGUI(QMainWindow):
         self.total_size = self.file_manager.get_total_size()
         self.total_time = 0
         self.processed_size = 0
+        # Start processing files
         for file in self.file_manager.get_files():
             worker = ProcessingWorker(self.processor, file, self.signals)
             self.thread_pool.start(worker)
+
 
     def update_progress_info(self, message=None, error=None):
         progress = (self.files_processed / len(self.file_manager.get_files())) * 100 if self.file_manager.get_files() else 0
@@ -1513,31 +1542,23 @@ class PreprocessorGUI(QMainWindow):
             self.update_status_bar()
             self.processing_dialog.close()
             self.display_results(self.processed_results, self.warnings)
+            # Generate report after processing is complete
             self.update_report(processed=True, processed_results=self.processed_results)
+
 
     def display_results(self, results, warnings):
         if results:
-            self.original_text.setPlainText("")  
-            self.processed_text.setPlainText("")  
-            for file_path, original_text, processed_text in results:  
-                self.original_text.moveCursor(QTextCursor.End)
-                original_cursor = self.original_text.textCursor()
-                original_cursor.insertText(f"File: {file_path}\n\n{original_text}\n\n")
+            self.original_text.clear()
+            self.processed_text.clear()
+            for file_path, original_text, processed_text in results:
+                # Append original text
+                self.original_text.appendPlainText(f"File: {file_path}\n\n{original_text}\n\n")
 
-                self.processed_text.moveCursor(QTextCursor.End)  
-                cursor = self.processed_text.textCursor()
-                cursor.insertText(f"File: {file_path}\n\n")
-
-                if self.processor.parameters.get("sentence_tokenization"):
-                    sentences = processed_text.split('\n')
-                    formatted_text = '\n'.join(sentences)
-                    cursor.insertText(formatted_text + "\n\n")  
-                elif self.processor.parameters.get("word_tokenization"):
-                    words = processed_text.split()
-                    formatted_text = ' '.join(words)
-                    cursor.insertText(formatted_text + "\n\n")
-                else:
-                    cursor.insertText(processed_text + "\n\n")
+                # Append processed text
+                self.processed_text.appendPlainText(f"File: {file_path}\n\n{processed_text}\n\n")
+        else:
+            self.original_text.clear()
+            self.processed_text.clear()
 
         if warnings:
             warning_msg = "\n".join([f"{file}: {warning}" for file, warning in warnings])
@@ -1762,18 +1783,28 @@ class PreprocessorGUI(QMainWindow):
     def update_report(self, processed=False, processed_results=None):
         if not self.file_manager.get_files():
             self.summary_text.clear()
+            self.summary_stack.setCurrentWidget(self.summary_text)
             return
-        
-        QTimer.singleShot(100, lambda: self._generate_report(processed, processed_results))
+
+        if processed and processed_results:
+            self.summary_stack.setCurrentWidget(self.loading_label)
+            if hasattr(self, 'loading_movie'):
+                self.loading_movie.start()
+            QTimer.singleShot(100, lambda: self._generate_report(processed, processed_results))
 
     def _generate_report(self, processed, processed_results):
         try:
             parameters = self.processor.get_parameters()
             self.report_worker = ReportWorker(self.file_manager.get_files(), parameters, processed, processed_results)
-            self.report_worker.signals.result.connect(self.display_report)
-            self.report_worker.signals.error.connect(self.handle_report_error)
-            self.report_worker.signals.finished.connect(self.on_report_finished)
-            QThreadPool.globalInstance().start(self.report_worker)
+            self.report_thread = QThread()
+            self.report_worker.moveToThread(self.report_thread)
+            self.report_worker.result.connect(self.display_report)
+            self.report_worker.error.connect(self.handle_report_error)
+            self.report_worker.finished.connect(self.report_thread.quit)
+            self.report_worker.finished.connect(self.report_worker.deleteLater)
+            self.report_thread.finished.connect(self.report_thread.deleteLater)
+            self.report_thread.started.connect(self.report_worker.run)
+            self.report_thread.start()
         except Exception as e:
             logging.error(f"Error generating report: {str(e)}")
             self.status_bar.showMessage("Error generating report", 5000)
@@ -1781,13 +1812,22 @@ class PreprocessorGUI(QMainWindow):
     def handle_report_error(self, error_msg):
         logging.error(f"Error in report generation: {error_msg}")
         self.status_bar.showMessage("Error generating report", 5000)
+        # Switch back to summary_text and display the error message
+        self.summary_stack.setCurrentWidget(self.summary_text)
+        if hasattr(self, 'loading_movie'):
+            self.loading_movie.stop()
+        self.summary_text.setHtml(f"<div style='color: #FF0000;'>Error generating report: {error_msg}</div>")
 
     def on_report_finished(self):
         logging.info("Report generation finished")
 
     def display_report(self, report_html):
         self.summary_text.setHtml(report_html)
+        self.summary_stack.setCurrentWidget(self.summary_text)
+        if hasattr(self, 'loading_movie'):
+            self.loading_movie.stop()
         logging.info("Report displayed successfully")
+
 
     def check_for_updates(self, manual_trigger=False):
         try:
