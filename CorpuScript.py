@@ -2,6 +2,7 @@ import os
 import sys
 import re
 import unicodedata
+from charset_normalizer import from_bytes
 import logging
 import json
 import urllib.request
@@ -11,14 +12,14 @@ import multiprocessing
 from threading import Lock
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QVBoxLayout, QHBoxLayout, QWidget, QPushButton, QSizePolicy,
-    QTextEdit, QProgressBar, QFileDialog, QLabel, QListWidget,
+    QTextEdit, QProgressBar, QFileDialog, QLabel, QListWidget, QToolButton, QStyle,
     QTabWidget, QLineEdit, QDialog, QDialogButtonBox, QCheckBox, QMessageBox,
     QSplitter, QToolBar, QStatusBar, QListWidgetItem,
-    QPlainTextEdit, QWizard, QWizardPage, QTableWidget, QComboBox, QHeaderView, QScrollArea, QStackedWidget
+    QPlainTextEdit, QWizard, QWizardPage, QTableWidget, QComboBox, QHeaderView, QStackedWidget, QGridLayout
 )
 from PySide6.QtCore import Qt, Signal, QObject, QThread, QSize, QRunnable, QThreadPool, QUrl, QTimer, QRegularExpression
 from PySide6.QtGui import (
-    QIcon, QFont, QColor, QAction, QPainter, QIntValidator, QTextCursor, QTextCharFormat, QSyntaxHighlighter, QDesktopServices, QKeySequence, QFontDatabase, QMovie
+    QIcon, QFont, QColor, QAction, QPainter, QIntValidator, QTextCursor, QTextCharFormat, QSyntaxHighlighter, QDesktopServices, QKeySequence, QFontDatabase
 )
 from PySide6.QtWebEngineWidgets import QWebEngineView
 from bs4 import BeautifulSoup
@@ -70,6 +71,14 @@ class CharacterFilterModule(PreprocessingModule):
             text = text.replace(item, '')
         return text
 
+class PageNumberRemovalModule(PreprocessingModule):
+    def __init__(self):
+        super().__init__()
+        self.pattern = re.compile(r'(?:\n\s*){1,2}\d{1,4}(?:\s*\n){1,2}', re.MULTILINE)
+    
+    def process(self, text):
+        return self.pattern.sub('\n', text)
+
 class WhitespaceNormalizationModule(PreprocessingModule):
     def process(self, text):
         text = re.sub(r'\s+([.,?!;:])', r'\1', text) # Remove whitespace before punctuation
@@ -90,10 +99,10 @@ class LineBreakRemovalModule(PreprocessingModule):
 class BibliographicalReferenceRemovalModule(PreprocessingModule):
     def __init__(self):
         super().__init__()
-        # Regex pattern to match bibliographical references
-        self.pattern = re.compile(r'\([^()]*\b\d{4}\b[^()]*\)')
+        # Updated regex pattern to match bibliographical references more precisely
+        self.pattern = re.compile(r'\([A-Z][a-z]+(?:[^()]*?\d{4}[^()]*?)?\)')
     
-    def process(self, text):
+    def process(self, text: str) -> str:
         return self.pattern.sub('', text)
 
 class LowercaseModule(PreprocessingModule):
@@ -134,16 +143,6 @@ class RegexSubstitutionModule(PreprocessingModule):
                 logging.debug(f"Applied pattern: '{self.pattern.pattern}' - {count} replacements made.")
             return new_text
         return text
-
-class LemmatizationModule(TokenBasedModule):
-    def process_tokens(self, tokens):
-        return [token.lemma_ for token in self.nlp(" ".join(tokens))]
-
-class SentenceTokenizationModule(TokenBasedModule):
-    def process(self, text):
-        doc = self.nlp(text)
-        sentences = [sent.text.strip() for sent in doc.sents]
-        return '\n'.join(sentences)
 
 class WordTokenizationModule(TokenBasedModule):
     def process(self, text):
@@ -200,26 +199,27 @@ class PreprocessingPipeline:
                 text = ' '.join(text)
         return text.strip()
 
-class DocumentProcessor: 
+class DocumentProcessor:
+    default_parameters = {
+        "remove_break_lines": False,
+        "lowercase": False,
+        "chars_to_remove": [],
+        "word_tokenization": False,
+        "remove_stop_words": False,
+        "regex_pattern": "",
+        "strip_html": False,
+        "remove_diacritics": False,
+        "remove_greek": False,
+        "remove_cyrillic": False,
+        "remove_super_sub_script": False,
+        "remove_page_numbers": False,  
+        "remove_bibliographical_references": False,
+        "normalize_spacing": False,
+        "normalize_unicode": False,
+    }
+
     def __init__(self):
-        self.parameters = {
-            "remove_break_lines": False,
-            "lowercase": False,
-            "chars_to_remove": [],
-            "lemmatization": False,
-            "sentence_tokenization": False,
-            "word_tokenization": False,
-            "remove_stop_words": False,
-            "regex_pattern": "", 
-            "strip_html": False,
-            "remove_diacritics": False,
-            "remove_greek": False,
-            "remove_cyrillic": False,
-            "remove_super_sub_script": False,
-            "remove_bibliographical_references": False,  
-            "normalize_spacing": False,
-            "normalize_unicode": False,
-        }
+        self.parameters = self.default_parameters.copy()
         self.update_pipeline()
 
     def set_parameters(self, parameters):
@@ -242,72 +242,54 @@ class DocumentProcessor:
             logging.error(f"Parameter validation error: {e}")
             QMessageBox.warning(None, "Parameter Error", str(e))
 
+    def reset_parameters(self):
+        self.parameters = self.default_parameters.copy()
+        self.update_pipeline()
+
     def update_pipeline(self):
         self.pipeline = PreprocessingPipeline()
         if self.parameters["regex_pattern"]:
             self.pipeline.add_module(RegexSubstitutionModule(self.parameters["regex_pattern"]))
-            logging.debug("Added RegexSubstitutionModule to pipeline.")
         if self.parameters["strip_html"]:
             self.pipeline.add_module(HTMLStripperModule())
-            logging.debug("Added HTMLStripperModule to pipeline.")
         if self.parameters["remove_break_lines"]:
             self.pipeline.add_module(LineBreakRemovalModule())
-            logging.debug("Added LineBreakRemovalModule to pipeline.")
         if self.parameters["lowercase"]:
             self.pipeline.add_module(LowercaseModule())
-            logging.debug("Added LowercaseModule to pipeline.")
         if self.parameters["chars_to_remove"]:
             self.pipeline.add_module(CharacterFilterModule(self.parameters["chars_to_remove"]))
-            logging.debug("Added CharacterFilterModule to pipeline.")
-        if self.parameters.get("lemmatization"):
-            self.pipeline.add_module(LemmatizationModule())
-            logging.debug("Added LemmatizationModule to pipeline.")
-        if self.parameters.get("sentence_tokenization"):
-            self.pipeline.add_module(SentenceTokenizationModule())
-            logging.debug("Added SentenceTokenizationModule to pipeline.")
-        if self.parameters.get("word_tokenization"):
+        if self.parameters["word_tokenization"]:
             self.pipeline.add_module(WordTokenizationModule())
-            logging.debug("Added WordTokenizationModule to pipeline.")
         if self.parameters["remove_stop_words"]:
             self.pipeline.add_module(StopWordRemovalModule())
-            logging.debug("Added StopWordRemovalModule to pipeline.")
         if self.parameters["remove_diacritics"]:
             self.pipeline.add_module(DiacriticRemovalModule())
-            logging.debug("Added DiacriticRemovalModule to pipeline.")
         if self.parameters["remove_greek"]:
             self.pipeline.add_module(GreekLetterRemovalModule())
-            logging.debug("Added GreekLetterRemovalModule to pipeline.")
         if self.parameters["remove_cyrillic"]:
             self.pipeline.add_module(CyrillicRemovalModule())
-            logging.debug("Added CyrillicRemovalModule to pipeline.")
         if self.parameters["remove_super_sub_script"]:
             categories_to_remove = {'No', 'Sk'}
             self.pipeline.add_module(UnicodeCategoryFilterModule(categories_to_remove))
-            logging.debug("Added UnicodeCategoryFilterModule to pipeline.")
+        if self.parameters["remove_page_numbers"]:
+            self.pipeline.add_module(PageNumberRemovalModule())  
         if self.parameters["remove_bibliographical_references"]:
             self.pipeline.add_module(BibliographicalReferenceRemovalModule())
-            logging.debug("Added BibliographicalReferenceRemovalModule to pipeline.")
-        
-        # Add WhitespaceNormalizationModule **after** modules that may introduce spaces
         if self.parameters["normalize_spacing"]:
             self.pipeline.add_module(WhitespaceNormalizationModule())
-            logging.debug("Added WhitespaceNormalizationModule to pipeline.")
-        
-        # Add remaining modules
-        if self.parameters.get("normalize_unicode", False):
+        if self.parameters["normalize_unicode"]:
             self.pipeline.add_module(UnicodeNormalizationModule())
-            logging.debug("Added UnicodeNormalizationModule to pipeline.")
 
     def get_parameters(self):
         return self.parameters
 
     def process_file(self, text):
         if not any(self.parameters.values()):
-            return text  
+            return text
         processed_text = self.pipeline.process(text)
         logging.debug("Processed text through pipeline.")
         return processed_text
-
+    
 class ProcessingWorker(QRunnable):
     def __init__(self, processor, file_path, signals):
         super().__init__()
@@ -322,20 +304,27 @@ class ProcessingWorker(QRunnable):
         except Exception as e:
             self.signals.error.emit(self.file_path, f"Failed to get file size: {str(e)}")
             return
+
         try:
+            # Detect encoding
+            with open(self.file_path, 'rb') as f:
+                raw_data = f.read()
+                result = from_bytes(raw_data)
+                best_guess = result.best()
+                if best_guess:
+                    encoding = best_guess.encoding
+                else:
+                    encoding = 'utf-8'  # Fallback encoding
+
             start_time = time.time()
-            with open(self.file_path, 'r', encoding='utf-8', errors='ignore') as file:
-                original_text = file.read()  
+            with open(self.file_path, 'r', encoding=encoding, errors='replace') as file:
+                original_text = file.read()
+
             processed_text = self.processor.process_file(original_text)
             end_time = time.time()
             processing_time = end_time - start_time
-            self.signals.result.emit(self.file_path, original_text, processed_text, file_size, processing_time) # Emit original text too
-        except FileNotFoundError as e:
-            self.signals.error.emit(self.file_path, f"File not found: {str(e)}")
-            return
-        except IOError as e:
-            self.signals.error.emit(self.file_path, f"I/O error while reading file: {str(e)}")
-            return
+
+            self.signals.result.emit(self.file_path, original_text, processed_text, file_size, processing_time)
         except Exception as e:
             self.signals.error.emit(self.file_path, f"Unexpected error while reading file: {str(e)}")
             return
@@ -468,19 +457,38 @@ class ThemeManager:
             "text": "#FFFFFF",
             "accent": "#FFB900",
             "icon_dark": "#FFFFFF",
-            "icon_light": "#000000"
+            "icon_light": "#000000",
+            "border": "#3F3F3F",
+            "widget_background": "#2D2D2D",
+            "report_background": "#2D2D2D",
+            "report_text": "#FFFFFF",
+            "report_description": "#A0A0A0"
         }
 
     def toggle_theme(self):
         self.dark_theme = not self.dark_theme
+        if self.dark_theme:
+            self.custom_colors.update({
+                "background": "#1E1E1E",
+                "text": "#FFFFFF",
+                "widget_background": "#2D2D2D",
+                "report_background": "#2D2D2D",
+                "border": "#3F3F3F",
+                "report_text": "#FFFFFF",
+                "report_description": "#A0A0A0"
+            })
+        else:
+            self.custom_colors.update({
+                "background": "#F0F0F0",
+                "text": "#000000",
+                "widget_background": "#FFFFFF",
+                "report_background": "#FFFFFF",
+                "border": "#CCCCCC",
+                "report_text": "#000000",
+                "report_description": "#505050"
+            })
 
     def get_stylesheet(self):
-        if self.dark_theme:
-            return self._get_dark_stylesheet()
-        else:
-            return self._get_light_stylesheet()
-
-    def _get_dark_stylesheet(self):
         return f"""
             QMainWindow, QWidget {{
                 background-color: {self.custom_colors['background']};
@@ -496,88 +504,76 @@ class ThemeManager:
             QPushButton:hover {{
                 background-color: {self.custom_colors['secondary']};
             }}
-            QPushButton:pressed {{
-                background-color: {self.custom_colors['accent']};
+            QTextEdit, QListWidget, QPlainTextEdit, QWidget#reportWidget {{
+                border: 1px solid {self.custom_colors['border']};
+                background-color: {self.custom_colors['widget_background']};
+                color: {self.custom_colors['text']};
+                border-radius: 5px;
+                padding: 5px;
             }}
-            QLineEdit, QTextEdit, QListWidget, QPlainTextEdit {{
-                background-color: #2D2D2D;
-                border: 1px solid #3F3F3F;
-                padding: 3px;
+            QLabel#sectionLabel {{
+                color: {self.custom_colors['primary']};
+                font-size: 16px;
+                font-weight: bold;
+                margin-bottom: 10px;
             }}
-            QToolBar {{
-                border: 1px solid #3F3F3F;
+            QLabel#reportValue {{
+                color: {self.custom_colors['report_text']};
+                font-size: 24px;
+                font-weight: bold;
             }}
-            QMenu {{
-                background-color: #2D2D2D;
-                border: 1px solid #3F3F3F;
+            QLabel#reportDescription {{
+                color: {self.custom_colors['report_description']};
+                font-size: 12px;
             }}
-            QMenu::item:selected {{
-                background-color: {self.custom_colors['primary']};
+            QWidget#reportWidget {{
+                background-color: {self.custom_colors['report_background']};
             }}
             QTabWidget::pane {{
-                border-top: 2px solid #3F3F3F;
+                border: 1px solid {self.custom_colors['border']};
+                border-radius: 5px;
             }}
             QTabBar::tab {{
-                background: #2D2D2D;
+                background-color: {self.custom_colors['widget_background']};
                 color: {self.custom_colors['text']};
                 padding: 5px 10px;
                 border-top-left-radius: 3px;
                 border-top-right-radius: 3px;
             }}
             QTabBar::tab:selected {{
-                background: {self.custom_colors['primary']};
-            }}
-        """
-    def _get_light_stylesheet(self):
-        return f"""
-            QMainWindow, QWidget {{
-                background-color: #F0F0F0;
-                color: #000000;
-            }}
-            QPushButton {{
                 background-color: {self.custom_colors['primary']};
-                color: #FFFFFF;
-                border: none;
-                padding: 5px 10px;
+                color: {self.custom_colors['text']};
+            }}
+            QLineEdit {{
+                border: 1px solid {self.custom_colors['border']};
+                background-color: {self.custom_colors['widget_background']};
+                color: {self.custom_colors['text']};
+                padding: 3px;
                 border-radius: 3px;
             }}
-            QPushButton:hover {{
+            QMenuBar {{
+                background-color: {self.custom_colors['background']};
+                color: {self.custom_colors['text']};
+            }}
+            QMenuBar::item {{
+                background-color: transparent;
+            }}
+            QMenuBar::item:selected {{
                 background-color: {self.custom_colors['secondary']};
             }}
-            QPushButton:pressed {{
-                background-color: {self.custom_colors['accent']};
-            }}
-            QLineEdit, QTextEdit, QListWidget, QPlainTextEdit {{
-                background-color: #FFFFFF;
-                border: 1px solid #CCCCCC;
-                padding: 3px;
-            }}
-            QToolBar {{
-                border: 1px solid #CCCCCC;
+            QMenuBar::item:pressed {{
+                background-color: {self.custom_colors['primary']};
             }}
             QMenu {{
-                background-color: #FFFFFF;
-                border: 1px solid #CCCCCC;
+                background-color: {self.custom_colors['background']};
+                color: {self.custom_colors['text']};
+                border: 1px solid {self.custom_colors['border']};
             }}
             QMenu::item:selected {{
-                background-color: {self.custom_colors['primary']};
-                color: #FFFFFF;
-            }}
-            QTabWidget::pane {{
-                border-top: 2px solid #CCCCCC;
-            }}
-            QTabBar::tab {{
-                background: #E1E1E1;
-                color: #000000;
-                padding: 5px 10px;
-                border-top-left-radius: 3px;
-                border-top-right-radius: 3px;
-            }}
-            QTabBar::tab:selected {{
-                background: {self.custom_colors['primary']};
-                color: #FFFFFF;
+                background-color: {self.custom_colors['secondary']};
             }}
         """
+    
     def update_color(self, color_key, color_value):
         if color_key in self.custom_colors:
             self.custom_colors[color_key] = color_value
@@ -790,6 +786,41 @@ class RegexHighlighter(QSyntaxHighlighter):
             self.setFormat(index, 1, self.formats['literal'])
             index += 1
 
+class FileDisplayDialog(QDialog):
+    def __init__(self, total_files, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Select Number of Files to Display")
+        self.total_files = total_files
+
+        layout = QVBoxLayout(self)
+
+        label = QLabel(f"Total files selected: {total_files}\nHow many files would you like to display?")
+        layout.addWidget(label)
+
+        self.input_field = QLineEdit()
+        self.input_field.setValidator(QIntValidator(1, total_files))
+        self.input_field.setPlaceholderText(f"Enter a number between 1 and {total_files}")
+        self.input_field.setText("10")  # Default value
+        layout.addWidget(self.input_field)
+
+        button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        layout.addWidget(button_box)
+
+        button_box.accepted.connect(self.validate_and_accept)
+        button_box.rejected.connect(self.reject)
+
+    def validate_and_accept(self):
+        text = self.input_field.text()
+        if text.isdigit():
+            value = int(text)
+            if 1 <= value <= self.total_files:
+                self.accept()
+                return
+        QMessageBox.warning(self, "Invalid Input", f"Please enter a valid number between 1 and {self.total_files}.")
+
+    def get_number_of_files(self):
+        return int(self.input_field.text())
+
 class ParametersDialog(QDialog):
     def __init__(self, current_parameters, parent=None):
         super().__init__(parent)
@@ -799,36 +830,58 @@ class ParametersDialog(QDialog):
         self.parameters = current_parameters.copy()
         self.pattern_data = self.parameters.get("pattern_data", [])
 
+        self.options = [
+            ("remove_break_lines", "Join Break Lines"),
+            ("lowercase", "Apply Lowercase"),
+            ("strip_html", "Strip HTML tags"),
+            ("remove_diacritics", "Diacritic Replacement"),
+            ("normalize_spacing", "Normalize Spacing"),
+            ("remove_stop_words", "Remove Stop Words"),
+            ("word_tokenization", "Word Tokenization"),
+            ("remove_greek", "Remove Greek letters"),
+            ("remove_cyrillic", "Remove Cyrillic Script"),
+            ("remove_super_sub_script", "Remove Superscript and Subscript Characters"),
+            ("remove_bibliographical_references", "Remove Bibliographical References"),
+            ("normalize_unicode", "Normalize Unicode"),
+            ("remove_page_numbers", "Remove Page Numbers"),
+        ]
+
+        descriptions = {
+            "remove_diacritics": "Replace diacritical marks (accents) from characters, standardizing the text (e.g., 'João' becomes 'Joao').",
+            "normalize_spacing": "Adjust spacing to ensure consistent formatting throughout the text.",
+            "remove_stop_words": "Eliminate common stop words (prepositions, determiners, conjunctions and non-meaningful words)\nto focus on significant words in the corpus.",
+            "word_tokenization": "Split the text into individual words (tokens) for analysis.",
+            "remove_bibliographical_references": "Eliminate bibliographical citations such as (Alves 1994) from the text.\nIt matches all occurrences that follow this pattern: '(' + capitalized word + any characters in between + a four-digit number + ')'.",
+            "normalize_unicode": "Standardize text encoding to ensure consistency across the corpus.",
+            "remove_page_numbers": "Delete standalone page numbers that are isolated on their own lines within the text.",
+            "normalize_unicode": "Standardize text encoding by removing non-UTF-8 characters to ensure consistency across the corpus.",
+            "remove_page_numbers": "Delete standalone page numbers that are isolated on their own lines within the text.",
+        }
+
         tabs = QTabWidget()
         general_tab = QWidget()
         general_layout = QVBoxLayout(general_tab)
         advanced_tab = QWidget()
         advanced_layout = QVBoxLayout(advanced_tab)
 
-        options = [
-            ("remove_break_lines", "Join break lines"),
-            ("lowercase", "Lowercase"),
-            ("strip_html", "Strip HTML tags"),
-            ("remove_diacritics", "Diacritic Replacement"),
-            ("normalize_spacing", "Normalize Spacing"),
-            ("remove_stop_words", "Remove Stop Words"),
-            ("lemmatization", "Apply Lemmatization"),
-            ("sentence_tokenization", "Sentence Tokenization"),
-            ("word_tokenization", "Word Tokenization"),
-            ("remove_greek", "Remove Greek letters"),
-            ("remove_cyrillic", "Remove Cyrillic script"),
-            ("remove_super_sub_script", "Remove superscript and subscript characters"),
-            ("remove_bibliographical_references", "Remove bibliographical references throughout the text") ,  
-            ("normalize_unicode", "Normalize Unicode"),
-        ]
-
         vbox_layout = QVBoxLayout()
-        for key, label in options:
+        for key, label in self.options:
+            h_layout = QHBoxLayout()
             checkbox = QCheckBox(label)
             checkbox.setChecked(self.parameters.get(key, False))
             checkbox.stateChanged.connect(lambda state, k=key: self.parameters.update({k: bool(state)}))
             checkbox.setToolTip(f"Enable or disable {label.lower()}")
-            vbox_layout.addWidget(checkbox)
+            h_layout.addWidget(checkbox)
+            if key in descriptions:
+                info_button = QToolButton()
+                info_button.setIcon(self.style().standardIcon(getattr(QStyle, 'SP_MessageBoxInformation')))
+                info_button.setFixedSize(16, 16)
+                info_button.setToolTip(descriptions[key])
+                info_button.setStyleSheet("QToolButton { border: none; background-color: transparent; }")
+                h_layout.addWidget(info_button)
+            h_layout.addStretch()
+            vbox_layout.addLayout(h_layout)
+        
         general_layout.addLayout(vbox_layout)
         general_layout.addStretch()
 
@@ -836,20 +889,25 @@ class ParametersDialog(QDialog):
         regex_button.clicked.connect(self.open_regex_dialog)
         regex_button.setToolTip("Define advanced regex patterns")
         advanced_layout.addWidget(regex_button)
+        
         self.regex_display = QPlainTextEdit()
         self.regex_display.setReadOnly(True)
         self.regex_display.setPlainText(self.parameters.get("regex_pattern") or "None")
         self.regex_display.setFont(QFont("Courier New", 10))
         self.regex_display.setStyleSheet("background-color: #1E1E1E; color: #FFFFFF;")
         self.regex_highlighter = RegexHighlighter(self.regex_display.document())
+        
         advanced_layout.addWidget(QLabel("Current pattern:"))
         advanced_layout.addWidget(self.regex_display)
-        char_remove_button = QPushButton("Select Characters to Remove")
+        
+        char_remove_button = QPushButton("Select Characters or Sequences to Remove")
         char_remove_button.clicked.connect(self.open_char_selection)
         char_remove_button.setToolTip("Select specific characters or sequences to remove")
+        
         advanced_layout.addWidget(char_remove_button)
         self.char_list_widget = QListWidget()
         self.update_char_list()
+        
         advanced_layout.addWidget(QLabel("Selected items:"))
         advanced_layout.addWidget(self.char_list_widget)
         advanced_layout.addStretch()
@@ -862,6 +920,8 @@ class ParametersDialog(QDialog):
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
+
+        self.update_checkboxes()
 
     def open_regex_dialog(self):
         dialog = AdvancedPatternBuilder(self)
@@ -897,18 +957,19 @@ class ParametersDialog(QDialog):
             list_item = QListWidgetItem(item)
             self.char_list_widget.addItem(list_item)
 
-    def delete_selected_chars(self):
-        for item in self.char_list_widget.selectedItems():
-            self.parameters["chars_to_remove"].remove(item.text())
-        self.update_char_list()
+    def update_checkboxes(self):
+        for checkbox in self.findChildren(QCheckBox):
+            key = next((k for k, v in self.options if v == checkbox.text()), None)
+            if key:
+                checkbox.setChecked(self.parameters.get(key, False))
 
     def get_parameters(self):
         return self.parameters
-
+    
 class CharacterSelectionDialog(QDialog):
     def __init__(self, current_chars, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Select Characters to Remove")
+        self.setWindowTitle("Select Characeters or Sequences to Remove")
         self.setMinimumSize(400, 300)
         layout = QVBoxLayout(self)
         self.selected_chars = list(current_chars)
@@ -1016,9 +1077,8 @@ class DirectoryLoadingWorker(QObject):
         return self._is_cancelled
 
 class ReportWorker(QObject):
-    result = Signal(str)
-    error = Signal(str)
-    finished = Signal()
+    progress = Signal(int)
+    finished = Signal(dict)
 
     def __init__(self, files, parameters, processed=False, processed_results=None):
         super().__init__()
@@ -1027,74 +1087,70 @@ class ReportWorker(QObject):
         self.processed = processed
         self.processed_results = processed_results
         self.nlp = get_spacy_model()
+        self.batch_size = 100
 
     def run(self):
         try:
             total_words = 0
-            all_words = []
             total_size = 0
+            file_count = len(self.files)
 
-            if self.processed and self.processed_results:
-                for file_path, original_text, processed_text in self.processed_results:
-                    total_size += len(processed_text.encode('utf-8'))
-                    if self.parameters.get("word_tokenization"):
-                        tokens = processed_text.split()
-                        total_words += len(tokens)
-                        all_words.extend([word.lower() for word in tokens if word.isalpha()])
-                    else:
-                        doc = self.nlp(processed_text)
-                        tokens = [token for token in doc if not token.is_space]
-                        total_words += len(tokens)
-                        all_words.extend([token.lemma_.lower() for token in tokens if token.is_alpha])
-            else:
-                for file_path in self.files:
-                    total_size += os.path.getsize(file_path)
-                    with open(file_path, 'r', encoding='utf-8', errors='ignore') as file:
-                        text = file.read()
-                    doc = self.nlp(text)
-                    tokens = [token for token in doc if not token.is_space]
-                    total_words += len(tokens)
-                    all_words.extend([token.lemma_.lower() for token in tokens if token.is_alpha])
+            for i in range(0, file_count, self.batch_size):
+                batch = self.files[i:i+self.batch_size]
+                batch_words, batch_size = self.process_batch(batch)
+                
+                total_words += batch_words
+                total_size += batch_size
 
-            num_files = len(self.files)
-            avg_words = total_words / num_files if num_files else 0
-            total_size_mb = total_size / (1024 * 1024)
-            avg_size_mb = total_size_mb / num_files if num_files else 0
+                progress = min(100, int((i + len(batch)) / file_count * 100))
+                self.progress.emit(progress)
 
-            report = f"""
-                <html>
-                <head>
-                    <style>
-                        body {{
-                            font-family: 'Roboto', sans-serif;
-                            background-color: #1E1E1E;
-                            color: #FFFFFF;
-                            padding: 10px;
-                        }}
-                        div {{
-                            margin-bottom: 5px;
-                            font-size: 12px;
-                        }}
-                        div b {{
-                            color: #FFB900;
-                        }}
-                    </style>
-                </head>
-                <body>
-                    <div><b>Total Files Processed:</b> {num_files}</div>
-                    <div><b>Total Size of Processed Files:</b> {total_size_mb:.2f} MB</div>
-                    <div><b>Average File Size:</b> {avg_size_mb:.2f} MB</div>
-                    <div><b>Total Word Count:</b> {total_words}</div>
-                    <div><b>Average Word Count per File:</b> {avg_words:.2f}</div>
-                </body>
-                </html>
-            """
-            self.result.emit(report)
+            avg_words = total_words / file_count if file_count else 0
+            avg_size = total_size / file_count if file_count else 0
+
+            final_report = {
+                'total_files': file_count,
+                'total_size': total_size / (1024 * 1024),
+                'avg_size': avg_size / (1024 * 1024),
+                'total_words': total_words,
+                'avg_words': avg_words
+            }
+
+            self.finished.emit(final_report)
         except Exception as e:
-            self.error.emit(str(e))
-        finally:
-            self.finished.emit()
+            logging.error(f"Error in report generation: {str(e)}")
 
+    def process_batch(self, batch):
+        batch_words = 0
+        batch_size = 0
+        for file_path in batch:
+            if self.processed and self.processed_results:
+                _, _, text = next((r for r in self.processed_results if r[0] == file_path), (None, None, ''))
+            else:
+                # Detect encoding
+                with open(file_path, 'rb') as f:
+                    raw_data = f.read()
+                    result = from_bytes(raw_data)
+                    best_guess = result.best()
+                    if best_guess:
+                        encoding = best_guess.encoding
+                    else:
+                        encoding = 'utf-8'  # Fallback
+
+                with open(file_path, 'r', encoding=encoding, errors='replace') as file:
+                    text = file.read()
+
+            batch_size += len(text.encode('utf-8'))
+
+            if self.parameters.get("word_tokenization"):
+                tokens = text.split()
+                batch_words += len(tokens)
+            else:
+                doc = self.nlp(text)
+                batch_words += len([token for token in doc if not token.is_space])
+
+        return batch_words, batch_size
+                                         
 class WorkerSignals(QObject):
     result = Signal(str)
     error = Signal(str)
@@ -1115,14 +1171,14 @@ class PreprocessorGUI(QMainWindow):
         self.processed_results = []
         self.errors = []
         self.warnings = []
+        self.items_per_page = 10  # Default value, can be overridden by user input
         self.files_processed = 0
         self.total_size = 0
         self.total_time = 0
         self.processed_size = 0
         self.documentation_window = None
-
         self.report_thread = QThread()
-
+        self.report_worker = None
         self.lock = Lock()
         self.previous_search_term = ''
         self.init_ui()
@@ -1155,7 +1211,7 @@ class PreprocessorGUI(QMainWindow):
     def create_menu_bar(self):
         menu_bar = self.menuBar()
         file_menu = menu_bar.addMenu("&File")
-        self.new_action = self.create_action("New", "document-new", "Ctrl+N", "Start a new project", self.start_new_cleaning)
+        self.new_action = self.create_action("New", "document-new", "Ctrl+N", "Start a new project", self.confirm_start_new_cleaning)
         file_menu.addAction(self.new_action)
         self.open_files_action = self.create_action("Open Files", "document-open", "Ctrl+O", "Open files", self.open_file)
         file_menu.addAction(self.open_files_action)
@@ -1183,6 +1239,42 @@ class PreprocessorGUI(QMainWindow):
         help_menu.addAction(self.documentation_action)
         self.check_updates_action = self.create_action("Check for Updates", "system-software-update", "", "Check for updates", lambda: self.check_for_updates(manual_trigger=True))
         help_menu.addAction(self.check_updates_action)
+    
+    def confirm_start_new_cleaning(self):
+        reply = QMessageBox.question(self, 'Confirm New Project',
+                                     "Are you sure you want to start a new project? All current data will be lost.",
+                                     QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+        if reply == QMessageBox.Yes:
+            self.start_new_cleaning()
+
+    def start_new_cleaning(self):
+        self.file_manager.clear_files()
+        self.file_list.clear()
+
+        self.original_text.clear()
+        self.processed_text.clear()
+
+        self.current_file = None
+        self.corpus_name = "Untitled Corpus"
+
+        self.processor.reset_parameters()
+
+        self.clear_report()
+
+        self.update_status_bar()
+        self.update_report()
+
+        if self.report_worker:
+            self.report_thread.quit()
+            self.report_thread.wait()
+            self.report_worker = None
+
+        QMessageBox.information(self, "New Project", "A new project has been started.")
+
+    def clear_report(self):
+        for key in self.report_items:
+            self.report_items[key].findChild(QLabel, "reportValue").setText("0")
+        self.summary_stack.setCurrentIndex(0)  
 
     def create_toolbar(self):
         self.toolbar = QToolBar()
@@ -1208,27 +1300,23 @@ class PreprocessorGUI(QMainWindow):
         action.setToolTip(tooltip)
         action.triggered.connect(callback)
         return action
-
+    
     def setup_central_widget(self):
         central_widget = QWidget()
         main_layout = QHBoxLayout(central_widget)
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
 
+        # Left Panel
         left_panel = QWidget()
         left_layout = QVBoxLayout(left_panel)
-        left_panel.setMinimumWidth(300)  # Set minimum width for visibility
+        left_panel.setMinimumWidth(350)  # Set minimum width for visibility
 
+        # File List Widget
         file_list_widget = QWidget()
         file_list_layout = QVBoxLayout(file_list_widget)
         selected_files_label = QLabel("Selected Files:")
-        selected_files_label.setStyleSheet("""
-            font-family: Roboto, sans-serif;
-            font-size: 16px;
-            color: #518FBC;
-            font-weight: bold;
-            margin-bottom: 10px;
-        """)
+        selected_files_label.setObjectName("sectionLabel")
         file_list_layout.addWidget(selected_files_label)
 
         self.file_list = FileListWidget()
@@ -1237,12 +1325,14 @@ class PreprocessorGUI(QMainWindow):
         file_list_layout.addWidget(self.file_list)
         left_layout.addWidget(file_list_widget)
 
+        # Report Widget
         report_widget = self.create_report_area()
         left_layout.addWidget(report_widget)
 
         left_layout.setStretch(0, 2)  # file_list_widget
         left_layout.setStretch(1, 1)  # report_widget
 
+        # Text Display
         text_display = QWidget()
         text_layout = QVBoxLayout(text_display)
         text_display.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
@@ -1256,6 +1346,7 @@ class PreprocessorGUI(QMainWindow):
         self.text_tabs.addTab(self.processed_text, "Processed Text")
         text_layout.addWidget(self.text_tabs)
 
+        # Search Layout
         search_layout = QHBoxLayout()
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText("Search in text...")
@@ -1290,76 +1381,103 @@ class PreprocessorGUI(QMainWindow):
         splitter.addWidget(left_panel)
         splitter.addWidget(text_display)
         splitter.setStretchFactor(0, 1)  # Left panel 
-        splitter.setStretchFactor(1, 1)  # Right panel
+        splitter.setStretchFactor(1, 2)  # Right panel (text display) gets more space
 
         main_layout.addWidget(splitter)
 
         self.setCentralWidget(central_widget)
-            
+
     def create_report_area(self):
-        report_widget = QWidget()
-        report_layout = QVBoxLayout(report_widget)
+        outer_widget = QWidget()
+        outer_layout = QVBoxLayout(outer_widget)
 
         report_label = QLabel("Summary Report:")
-        report_label.setStyleSheet("""
-            font-family: Roboto, sans-serif;
-            font-size: 16px;
-            color: #518FBC;
-            font-weight: bold;
-            margin-bottom: 10px;
-        """)
-        report_layout.addWidget(report_label)
+        report_label.setObjectName("sectionLabel")
+        outer_layout.addWidget(report_label)
 
-        # Add the loading label
-        self.loading_label = QLabel()
-        self.loading_label.setAlignment(Qt.AlignCenter)
-        self.loading_label.setVisible(False)
+        report_widget = QWidget()
+        report_widget.setObjectName("reportWidget")
+        report_layout = QVBoxLayout(report_widget)
 
-        # Load the loading.gif
-        loading_gif_path = resource_path("loading.gif")
-        if os.path.exists(loading_gif_path):
-            self.loading_movie = QMovie(loading_gif_path)
-            self.loading_label.setMovie(self.loading_movie)
-            self.loading_movie.start()
-        else:
-            # If loading.gif not found, use placeholder text
-            self.loading_label.setText("Generating report, please wait...")
-            self.loading_label.setStyleSheet("color: #FFFFFF; font-size: 14px;")
-
-        self.summary_text = QTextEdit()
-        self.summary_text.setReadOnly(True)
-        self.summary_text.setFont(QFont("Roboto", 12))
-        self.summary_text.setAlignment(Qt.AlignLeft)
-        self.summary_text.setStyleSheet("""
-            background-color: #2D2D2D;
-            color: #A0A0A0;
-            border: 1px solid #3F3F3F;
-            padding: 3px;
-        """)
-
-        # Create a stack to hold the loading label and summary text
         self.summary_stack = QStackedWidget()
-        self.summary_stack.addWidget(self.loading_label)
-        self.summary_stack.addWidget(self.summary_text)
+        
+        empty_widget = QWidget()
+        self.summary_stack.addWidget(empty_widget)
 
-        # Initially show the summary_text
-        self.summary_stack.setCurrentWidget(self.summary_text)
+        loading_widget = QWidget()
+        loading_layout = QVBoxLayout(loading_widget)
+        self.loading_label = QLabel("Generating report...")
+        self.loading_label.setAlignment(Qt.AlignCenter)
+        loading_layout.addWidget(self.loading_label)
+        self.report_progress_bar = QProgressBar()
+        self.report_progress_bar.setRange(0, 100)
+        self.report_progress_bar.setValue(0)
+        loading_layout.addWidget(self.report_progress_bar)
+        self.summary_stack.addWidget(loading_widget)
+
+        self.report_grid = QGridLayout()
+        self.report_grid.setSpacing(10)
+
+        self.report_items = {
+            'total_files': self.create_report_item("Total Files Processed", "0"),
+            'total_size': self.create_report_item("Total Size of Processed Files", "0 MB"),
+            'avg_size': self.create_report_item("Average File Size", "0 MB"),
+            'total_words': self.create_report_item("Total Word Count", "0"),
+            'avg_words': self.create_report_item("Average Word Count per File", "0")
+        }
+
+        positions = [(i, j) for i in range(3) for j in range(2)]
+        for (key, widget), position in zip(self.report_items.items(), positions):
+            self.report_grid.addWidget(widget, *position)
+
+        report_content = QWidget()
+        report_content.setLayout(self.report_grid)
+        self.summary_stack.addWidget(report_content)
 
         report_layout.addWidget(self.summary_stack)
+        
+        outer_layout.addWidget(report_widget)
 
-        # Increase the maximum height for the report widget
-        report_widget.setMaximumHeight(250)
+        return outer_widget
 
-        return report_widget
-    
+    def create_report_item(self, label, value):
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+        layout.setContentsMargins(0, 0, 0, 0)
+        
+        value_label = QLabel(value)
+        value_label.setObjectName("reportValue")
+        value_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        
+        description_label = QLabel(label)
+        description_label.setObjectName("reportDescription")
+        description_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        
+        layout.addWidget(value_label)
+        layout.addWidget(description_label)
+        
+        return widget         
     def setup_status_bar(self):
         self.status_bar = QStatusBar()
         self.setStatusBar(self.status_bar)
-        self.progress_bar = QProgressBar()
-        self.progress_bar.setMaximumWidth(200)
-        self.status_bar.addPermanentWidget(self.progress_bar)
         self.update_status_bar()
 
+    def get_report_stylesheet(self):
+        return """
+            QWidget#reportWidget {
+                background-color: palette(base);
+                border-radius: 2px;
+            }
+            QLabel#reportValue {
+                font-size: 24px;
+                font-weight: bold;
+                color: palette(text);
+            }
+            QLabel#reportDescription {
+                font-size: 12px;
+                color: palette(mid);
+            }
+        """
     def apply_theme(self):
         self.setStyleSheet(self.theme_manager.get_stylesheet())
         self.update_icon_colors()
@@ -1398,7 +1516,6 @@ class PreprocessorGUI(QMainWindow):
             if new_files:
                 self.file_list.addItems(new_files)
                 self.update_status_bar()
-                # Start processing files immediately
                 self.process_files()
             else:
                 QMessageBox.information(self, "No New Files", "All selected files are already loaded.")
@@ -1418,6 +1535,8 @@ class PreprocessorGUI(QMainWindow):
             self.loading_thread.started.connect(self.loading_worker.run)
             self.loading_worker.finished.connect(self.on_directory_loading_finished)
             self.loading_dialog.cancelled.connect(self.cancel_loading)
+            self.loading_dialog.rejected.connect(self.cancel_loading)
+
             self.loading_thread.start()
 
     def cancel_loading(self):
@@ -1462,17 +1581,26 @@ class PreprocessorGUI(QMainWindow):
                     QMessageBox.information(self, 'Save Successful', "All files have been saved successfully.")
         else:
             QMessageBox.warning(self, 'Save Failed', "No processed files to save.")
-    
+            
     def process_files(self):
         self.status_bar.clearMessage()
         if not self.file_manager.get_files():
             QMessageBox.warning(self, "No Files", "Please select files to process.")
             return
+
+        total_files = len(self.file_manager.get_files())
+        dialog = FileDisplayDialog(total_files, self)
+        if dialog.exec():
+            number_to_display = dialog.get_number_of_files()
+            self.items_per_page = number_to_display
+        else:
+            # User cancelled the dialog
+            return
+
+        # Proceed with processing
         self.processing_dialog = FileLoadingDialog(self, title="Processing Files...")
         self.processing_dialog.show()
         self.signals.update_progress.connect(self.processing_dialog.update_progress)
-        self.progress_bar.setValue(0)
-        self.progress_bar.setMaximum(len(self.file_manager.get_files()))
         self.processed_results.clear()
         self.errors.clear()
         self.warnings.clear()
@@ -1480,14 +1608,13 @@ class PreprocessorGUI(QMainWindow):
         self.total_size = self.file_manager.get_total_size()
         self.total_time = 0
         self.processed_size = 0
-        # Start processing files
+
         for file in self.file_manager.get_files():
             worker = ProcessingWorker(self.processor, file, self.signals)
             self.thread_pool.start(worker)
 
     def update_progress_info(self, message=None, error=None):
         progress = (self.files_processed / len(self.file_manager.get_files())) * 100 if self.file_manager.get_files() else 0
-        self.progress_bar.setValue(int(progress))
         avg_speed = self.processed_size / self.total_time if self.total_time > 0 else 0
         status_message = f"Progress: {progress:.2f}% | Avg. Speed: {avg_speed:.2f} B/s"
         if message:
@@ -1540,36 +1667,52 @@ class PreprocessorGUI(QMainWindow):
             self.update_status_bar()
             self.processing_dialog.close()
             self.display_results(self.processed_results, self.warnings)
-            # Generate report after processing is complete
-            self.update_report(processed=True, processed_results=self.processed_results)
-
+            self._generate_report(processed=True, processed_results=self.processed_results)
 
     def display_results(self, results, warnings):
-        if results:
-            self.original_text.clear()
-            self.processed_text.clear()
-            for file_path, original_text, processed_text in results:
-                # Append original text
-                self.original_text.appendPlainText(f"File: {file_path}\n\n{original_text}\n\n")
-
-                # Append processed text
-                self.processed_text.appendPlainText(f"File: {file_path}\n\n{processed_text}\n\n")
-        else:
-            self.original_text.clear()
-            self.processed_text.clear()
+        self.results = results  # Store results
+        self.current_page = 0
+        self.display_page(items_per_page=self.items_per_page)  # Display specified number of files
 
         if warnings:
             warning_msg = "\n".join([f"{file}: {warning}" for file, warning in warnings])
             QMessageBox.warning(self, 'Processing Warnings', f"Warnings during processing:\n\n{warning_msg}")
 
+    def display_page(self, page_number=0, items_per_page=None):
+        if items_per_page is None:
+            page_results = self.results  # Display all results
+        else:
+            start = page_number * items_per_page
+            end = start + items_per_page
+            page_results = self.results[start:end]
+
+        self.original_text.clear()
+        self.processed_text.clear()
+
+        for file_path, original_text, processed_text in page_results:
+            self.original_text.appendPlainText(f"File: {file_path}\n\n{original_text}\n\n")
+            self.processed_text.appendPlainText(f"File: {file_path}\n\n{processed_text}\n\n")
+            
     def display_original_texts(self):
         if self.file_manager.get_files():
             self.original_text.clear()
             self.processed_text.clear()
             for file_path in self.file_manager.get_files():
                 try:
-                    with open(file_path, 'r', encoding='utf-8', errors='ignore') as file:
+                    # Encoding detection
+                    with open(file_path, 'rb') as f:
+                        raw_data = f.read()
+                        result = from_bytes(raw_data)
+                        best_guess = result.best()
+                        if best_guess:
+                            encoding = best_guess.encoding
+                        else:
+                            encoding = 'utf-8'  # Fallback encoding
+
+                    # Read with detected encoding
+                    with open(file_path, 'r', encoding=encoding, errors='replace') as file:
                         original_text = file.read()
+
                     self.original_text.appendPlainText(f"File: {file_path}\n\n{original_text}\n\n")
                     self.processed_text.appendPlainText(f"File: {file_path}\n\n{original_text}\n\n")
                 except Exception as e:
@@ -1588,7 +1731,13 @@ class PreprocessorGUI(QMainWindow):
         self.current_file = None
         self.corpus_name = "Untitled Corpus"
         self.update_status_bar()
-        self.update_report()
+
+        if self.report_worker:
+            self.report_thread.quit()
+            self.report_thread.wait()
+            self.report_worker = None
+
+        self.update_report()  
 
     def open_parameters_dialog(self):
         dialog = ParametersDialog(self.processor.get_parameters(), self)
@@ -1693,7 +1842,6 @@ class PreprocessorGUI(QMainWindow):
 
         while matches.hasNext():
             match = matches.next()
-            # Create a cursor for the match
             match_cursor = QTextCursor(document)
             match_cursor.setPosition(match.capturedStart())
             match_cursor.setPosition(match.capturedEnd(), QTextCursor.KeepAnchor)
@@ -1777,34 +1925,66 @@ class PreprocessorGUI(QMainWindow):
         if isinstance(active_text_edit, QPlainTextEdit):
             active_text_edit.redo()
 
-    def update_report(self, processed=False, processed_results=None):
-        if not self.file_manager.get_files():
-            self.summary_text.clear()
-            self.summary_stack.setCurrentWidget(self.summary_text)
+    def update_report_display(self, report_data):
+        self.summary_stack.setCurrentIndex(2)  # Switch to the report content
+        for key, value in report_data.items():
+            if key in self.report_items:
+                if isinstance(value, float):
+                    formatted_value = f"{value:.2f}"
+                else:
+                    formatted_value = str(value)
+                
+                if key.endswith('_size'):
+                    formatted_value += " MB"
+                
+                self.report_items[key].findChild(QLabel, "reportValue").setText(formatted_value)
+                
+    def _generate_report(self, processed=False, processed_results=None):
+        if self.report_worker is not None:
             return
+        
+        parameters = self.processor.get_parameters()
+        self.report_worker = ReportWorker(self.file_manager.get_files(), parameters, processed, processed_results)
+        self.report_thread = QThread()
+        self.report_worker.moveToThread(self.report_thread)
+        self.report_worker.progress.connect(self.update_report_progress)
+        self.report_worker.finished.connect(self.display_final_report)
+        
+        self.report_thread.started.connect(self.report_worker.run)
+        self.report_thread.start()
 
-        if processed and processed_results:
-            self.summary_stack.setCurrentWidget(self.loading_label)
-            if hasattr(self, 'loading_movie'):
-                self.loading_movie.start()
-            QTimer.singleShot(100, lambda: self._generate_report(processed, processed_results))
+        # Show the loading widget while the report is being generated
+        self.summary_stack.setCurrentIndex(1)
+                    
+    def display_final_report(self, report_data):
+        self.summary_stack.setCurrentIndex(2)  # Switch to the report content
+        for key, value in report_data.items():
+            if key in self.report_items:
+                if isinstance(value, float):
+                    formatted_value = f"{value:.2f}"
+                else:
+                    formatted_value = str(value)
+                
+                if key.endswith('_size'):
+                    formatted_value += " MB"
+                
+                self.report_items[key].findChild(QLabel, "reportValue").setText(formatted_value)
+        
+        self._cleanup_report_worker()
 
-    def _generate_report(self, processed, processed_results):
-        try:
-            parameters = self.processor.get_parameters()
-            self.report_worker = ReportWorker(self.file_manager.get_files(), parameters, processed, processed_results)
-            self.report_thread = QThread()
-            self.report_worker.moveToThread(self.report_thread)
-            self.report_worker.result.connect(self.display_report)
-            self.report_worker.error.connect(self.handle_report_error)
-            self.report_worker.finished.connect(self.report_thread.quit)
-            self.report_worker.finished.connect(self.report_worker.deleteLater)
-            self.report_thread.finished.connect(self.report_thread.deleteLater)
-            self.report_thread.started.connect(self.report_worker.run)
-            self.report_thread.start()
-        except Exception as e:
-            logging.error(f"Error generating report: {str(e)}")
-            self.status_bar.showMessage("Error generating report", 5000)
+    def _cleanup_report_worker(self):
+        if self.report_worker:
+            self.report_worker.deleteLater()
+            self.report_worker = None
+        if self.report_thread:
+            self.report_thread.quit()
+            self.report_thread.wait()
+            self.report_thread.deleteLater()
+            self.report_thread = None
+
+    def update_report_progress(self, progress):
+        self.report_progress_bar.setValue(progress)
+        self.loading_label.setText(f"Generating report... {progress}%")
 
     def handle_report_error(self, error_msg):
         logging.error(f"Error in report generation: {error_msg}")
@@ -1817,15 +1997,21 @@ class PreprocessorGUI(QMainWindow):
 
     def on_report_finished(self):
         logging.info("Report generation finished")
-        self.report_thread = None
+        if hasattr(self, 'report_progress_bar'):
+            self.report_progress_bar.setValue(100)
+        self.loading_label.setText("Report generation complete")
+        self.report_thread.quit()
+        self.report_thread.wait()
+        self._cleanup_report_worker()
 
-    def display_report(self, report_html):
-        self.summary_text.setHtml(report_html)
-        self.summary_stack.setCurrentWidget(self.summary_text)
-        if hasattr(self, 'loading_movie'):
-            self.loading_movie.stop()
-        logging.info("Report displayed successfully")
-
+    def display_report(self, report_data):
+        self.summary_stack.setCurrentIndex(2)  # Switch to the report content
+        self.report_items['total_files'].findChild(QLabel, "reportValue").setText(str(report_data['total_files']))
+        self.report_items['total_size'].findChild(QLabel, "reportValue").setText(f"{report_data['total_size']:.2f} MB")
+        self.report_items['avg_size'].findChild(QLabel, "reportValue").setText(f"{report_data['avg_size']:.2f} MB")
+        self.report_items['total_words'].findChild(QLabel, "reportValue").setText(str(report_data['total_words']))
+        self.report_items['avg_words'].findChild(QLabel, "reportValue").setText(f"{report_data['avg_words']:.2f}")
+    
     def check_for_updates(self, manual_trigger=False):
         try:
             url = 'https://api.github.com/repos/jhlopesalves/CorpuScript/releases/latest'
@@ -1861,18 +2047,11 @@ class PreprocessorGUI(QMainWindow):
     def closeEvent(self, event):
         self.thread_pool.clear()
         self.thread_pool.waitForDone()
-
         if hasattr(self, 'loading_thread') and self.loading_thread.isRunning():
             self.cancel_loading()
-
-        if hasattr(self, 'report_thread') and self.report_thread is not None:
-            try:
-                if self.report_thread.isRunning():
-                    self.report_thread.quit()
-                    self.report_thread.wait()
-            except RuntimeError:
-                pass 
-
+        if self.report_thread:
+            self.report_thread.quit()
+            self.report_thread.wait()
         event.accept()
 
 def main():

@@ -270,7 +270,35 @@
     <ul>
         <li><strong>Description:</strong> Removes common, non-informative words (stopwords) such as "the", "and", "is", etc., from the text.</li>
         <li><strong>Use Case:</strong> Reduces noise in text data, enhancing the performance of algorithms by focusing on meaningful words that contribute more significantly to the analysis.</li>
-        <li><strong>How to Use:</strong> Check the box labeled <strong>"Stopword Removal"</strong>. You can further customize the list of stopwords in the <strong>Advanced</strong> tab if needed.</li>
+        <li><strong>How to Use:</strong> Check the box labeled <strong>"Stopword Removal"</strong>. The preprocessing pipeline will automatically remove stopwords during processing.</li>
+        <li><strong>List of Stopwords Removed by spaCy:</strong>
+            <pre><code>
+STOP_WORDS = {
+    "a", "about", "above", "after", "again", "against", "all", "am", "an",
+    "and", "any", "are", "aren't", "as", "at", "be", "because", "been",
+    "before", "being", "below", "between", "both", "but", "by", "can't",
+    "cannot", "could", "couldn't", "did", "didn't", "do", "does", "doesn't",
+    "doing", "don't", "down", "during", "each", "few", "for", "from",
+    "further", "had", "hadn't", "has", "hasn't", "have", "haven't", "having",
+    "he", "he'd", "he'll", "he's", "her", "here", "here's", "hers",
+    "herself", "him", "himself", "his", "how", "how's", "i", "i'd", "i'll",
+    "i'm", "i've", "if", "in", "into", "is", "isn't", "it", "it's", "its",
+    "itself", "let's", "me", "more", "most", "mustn't", "my", "myself",
+    "no", "nor", "not", "of", "off", "on", "once", "only", "or", "other",
+    "ought", "our", "ours", "ourselves", "out", "over", "own", "same",
+    "shan't", "she", "she'd", "she'll", "she's", "should", "shouldn't",
+    "so", "some", "such", "than", "that", "that's", "the", "their", "theirs",
+    "them", "themselves", "then", "there", "there's", "these", "they",
+    "they'd", "they'll", "they're", "they've", "this", "those", "through",
+    "to", "too", "under", "until", "up", "very", "was", "wasn't", "we",
+    "we'd", "we'll", "we're", "we've", "were", "weren't", "what", "what's",
+    "when", "when's", "where", "where's", "which", "while", "who", "who's",
+    "whom", "why", "why's", "with", "won't", "would", "wouldn't", "you",
+    "you'd", "you'll", "you're", "you've", "your", "yours", "yourself",
+    "yourselves"
+}
+            </code></pre>
+        </li>
     </ul>
     <h4 id="225-strip-html-tags">2.2.5. Strip HTML Tags</h4>
     <ul>
@@ -304,11 +332,16 @@
     </ul>
     <h4 id="2210-normalize-unicode">2.2.10. Normalize Unicode</h4>
     <ul>
-        <li><strong>Description:</strong> Normalizes the text to a standard Unicode form (NFKC), ensuring consistency in character representation across the dataset.</li>
-        <li><strong>Use Case:</strong> Essential for maintaining data integrity, especially when dealing with text from multiple sources or languages, preventing discrepancies caused by different Unicode representations.</li>
-        <li><strong>How to Use:</strong> Check the box labeled <strong>"Normalize Unicode"</strong>. The text will be normalized to NFKC form during preprocessing.</li>
+        <li><strong>Description:</strong> Normalizes the text to a standard Unicode form (specifically NFKC), ensuring consistency in character representation across the dataset. This process converts characters to their canonical forms, eliminating discrepancies caused by different Unicode representations.</li>
+        <li><strong>Use Case:</strong> Essential for maintaining data integrity, especially when dealing with text from multiple sources or languages. Normalization prevents issues such as duplicate representations of the same character, which can adversely affect text analysis and processing tasks.</li>
+        <li><strong>How to Use:</strong> Check the box labeled <strong>"Normalize Unicode"</strong>. The text will undergo Unicode normalization to NFKC form during preprocessing, standardizing all characters to their canonical representations.</li>
+        <li><strong>Technical Details:</strong>
+            <ul>
+                <li><strong>Normalization Form:</strong> NFKC (Normalization Form Compatibility Composition) is used, which not only composes characters but also replaces compatibility characters with their canonical equivalents.</li>
+                <li><strong>Example:</strong> The ligature "ﬁ" will be converted to "fi", and full-width characters will be converted to their standard-width counterparts.</li>
+            </ul>
+        </li>
     </ul>
-        
     <h4 id="2211-lemmatization">2.2.11. Lemmatization</h4>
     <ul>
         <li><strong>Description:</strong> Reduces words to their base or dictionary form (lemmas), aiding in linguistic analysis by grouping together different forms of a word.</li>
@@ -335,8 +368,39 @@
         <li><strong>Description:</strong> Automatically identifies and removes in-text bibliographical references (e.g., citations like <code>(Smith, 2020)</code>), cleaning up the text for analysis.</li>
         <li><strong>Use Case:</strong> Essential for academic texts and research papers where citations can interfere with textual analysis by introducing non-content elements.</li>
         <li><strong>How to Use:</strong> Enable this option by checking the <strong>"Remove Bibliographical References"</strong> box. The preprocessing pipeline will remove all bibliographical references during processing.</li>
+        <li><strong>Patterns Matched:</strong> 
+            <ul>
+                <li>Bibliographical references typically follow patterns like <code>(Author, Year)</code>, <code>[1]</code>, or other citation formats.</li>
+                <li>The module uses regular expressions to match and remove these patterns. For example:
+                    <ul>
+                        <li><code>\(\w+, \d{4}\)</code>: Matches citations like <code>(Smith, 2020)</code>.</li>
+                        <li><code>\[\d+\]</code>: Matches numerical citations like <code>[1]</code>.</li>
+                        <li>Additional patterns can be customized based on the citation style used in the text.</li>
+                    </ul>
+                </li>
+            </ul>
+        </li>
     </ul>
     
+    <h4 id="2215-remove-page-numbers">2.2.15. Remove Page Numbers</h4>
+    <ul>
+        <li><strong>Description:</strong> Detects and removes standalone page numbers that appear isolated on their own lines within the text.</li>
+        <li><strong>Use Case:</strong> Useful for cleaning up documents that include page numbers inserted manually or automatically, ensuring they do not interfere with text analysis.</li>
+        <li><strong>How to Use:</strong> Enable this option by checking the <strong>"Remove Page Numbers"</strong> box. The preprocessing pipeline will identify and remove page numbers during processing.</li>
+        <li><strong>Patterns Matched:</strong>
+            <ul>
+                <li>Page numbers typically consist of digits and may be located at the top or bottom of a page.</li>
+                <li>The module uses regular expressions to match these patterns, such as:
+                    <ul>
+                        <li><code>^\d+$</code>: Matches lines that contain only digits.</li>
+                        <li><code>^\s*\d+\s*$</code>: Matches lines that contain digits possibly surrounded by whitespace.</li>
+                        <li><code>Page\s*\d+</code>: Matches lines like "Page 1", "Page  2", etc.</li>
+                    </ul>
+                </li>
+                <li>These patterns ensure that only page numbers are removed without affecting other numeric data within the text.</li>
+            </ul>
+        </li>
+    </ul>
     <hr>
     <h3 id="23-advanced-tab">2.3. Advanced Tab</h3>
     <p>The <strong>Advanced</strong> tab offers more granular control over the preprocessing process, allowing users to define custom patterns and specify additional characters to remove. This is particularly useful for handling specialized text cleaning requirements that go beyond the general options provided.</p>
