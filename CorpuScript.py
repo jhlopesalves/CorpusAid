@@ -35,7 +35,6 @@ def resource_path(relative_path):
         base_path = os.path.dirname(os.path.abspath(__file__))
     return os.path.join(base_path, relative_path)
 
-# Function to get the spacy model
 def get_spacy_model(): 
     if not hasattr(get_spacy_model, 'lock'):
         get_spacy_model.lock = threading.Lock()
@@ -43,9 +42,9 @@ def get_spacy_model():
         if not hasattr(get_spacy_model, 'nlp'):
             get_spacy_model.nlp = spacy.load('en_core_web_sm', disable=['parser', 'ner'])
             get_spacy_model.nlp.add_pipe('sentencizer')
+            get_spacy_model.nlp.max_length = 200000000  
     return get_spacy_model.nlp
 
-# Function to load the fonts
 def load_fonts():
     font_db = QFontDatabase()
     roboto_font_path = resource_path("fonts/Roboto-Regular.ttf")
@@ -71,6 +70,18 @@ class CharacterFilterModule(PreprocessingModule):
             text = text.replace(item, '')
         return text
 
+class LineBreakNormalizationModule(PreprocessingModule):
+    def __init__(self):
+        super().__init__()
+        self.scattered_chars_pattern = re.compile(r'(\b\w\b)', re.MULTILINE)
+        self.line_break_pattern = re.compile(r'(?<!\.\s)\n(?!\s*\n)', re.MULTILINE)
+
+    def process(self, text):
+        text = self.scattered_chars_pattern.sub('', text)
+        text = self.line_break_pattern.sub(' ', text)
+        text = re.sub(r'\s{2,}', ' ', text)
+        return text.strip()
+
 class PageNumberRemovalModule(PreprocessingModule):
     def __init__(self):
         super().__init__()
@@ -78,6 +89,29 @@ class PageNumberRemovalModule(PreprocessingModule):
     
     def process(self, text):
         return self.pattern.sub('\n', text)
+
+class RomanPageNumberRemovalModule(PreprocessingModule):
+    def __init__(self):
+        super().__init__()
+        self.pattern = re.compile(
+            r'(?:\n\s*){1,2}'
+            r'(?P<roman>[IVXLCDM]{1,7})'
+            r'(?:\s*\n){1,2}',
+            re.MULTILINE
+        )
+    def process(self, text):
+        return self.pattern.sub('\n', text)
+
+class PageIndicatorRemovalModule(PreprocessingModule):
+    def __init__(self):
+        super().__init__()
+        self.pattern = re.compile(
+            r'\b(?:[Pp]age|[Pp]ag\.?)\s+'
+            r'(?P<number>\d+|[IVXLCDM]+)\b',
+            re.MULTILINE
+        )
+    def process(self, text):
+        return self.pattern.sub('', text)
 
 class WhitespaceNormalizationModule(PreprocessingModule):
     def process(self, text):
@@ -99,7 +133,6 @@ class LineBreakRemovalModule(PreprocessingModule):
 class BibliographicalReferenceRemovalModule(PreprocessingModule):
     def __init__(self):
         super().__init__()
-        # Updated regex pattern to match bibliographical references more precisely
         self.pattern = re.compile(r'\([A-Z][a-z]+(?:[^()]*?\d{4}[^()]*?)?\)')
     
     def process(self, text: str) -> str:
@@ -212,10 +245,13 @@ class DocumentProcessor:
         "remove_greek": False,
         "remove_cyrillic": False,
         "remove_super_sub_script": False,
+        "remove_roman_page_numbers": False,
+        "remove_page_indicators": False,
         "remove_page_numbers": False,  
         "remove_bibliographical_references": False,
         "normalize_spacing": False,
         "normalize_unicode": False,
+        "normalize_line_breaks": False,
     }
 
     def __init__(self):
@@ -248,16 +284,30 @@ class DocumentProcessor:
 
     def update_pipeline(self):
         self.pipeline = PreprocessingPipeline()
+        #first
         if self.parameters["regex_pattern"]:
             self.pipeline.add_module(RegexSubstitutionModule(self.parameters["regex_pattern"]))
+        #second
+        if self.parameters["chars_to_remove"]:
+            self.pipeline.add_module(CharacterFilterModule(self.parameters["chars_to_remove"]))
+        #third
+        if self.parameters["remove_page_numbers"]:
+            self.pipeline.add_module(PageNumberRemovalModule())
+        if self.parameters["remove_roman_page_numbers"]:
+            self.pipeline.add_module(RomanPageNumberRemovalModule())
+        if self.parameters["remove_page_indicators"]:
+            self.pipeline.add_module(PageIndicatorRemovalModule())  
+        #fourth
+        if self.parameters["remove_bibliographical_references"]:
+            self.pipeline.add_module(BibliographicalReferenceRemovalModule())           
         if self.parameters["strip_html"]:
             self.pipeline.add_module(HTMLStripperModule())
         if self.parameters["remove_break_lines"]:
             self.pipeline.add_module(LineBreakRemovalModule())
+        if self.parameters["normalize_line_breaks"]:
+            self.pipeline.add_module(LineBreakNormalizationModule())
         if self.parameters["lowercase"]:
             self.pipeline.add_module(LowercaseModule())
-        if self.parameters["chars_to_remove"]:
-            self.pipeline.add_module(CharacterFilterModule(self.parameters["chars_to_remove"]))
         if self.parameters["word_tokenization"]:
             self.pipeline.add_module(WordTokenizationModule())
         if self.parameters["remove_stop_words"]:
@@ -271,10 +321,6 @@ class DocumentProcessor:
         if self.parameters["remove_super_sub_script"]:
             categories_to_remove = {'No', 'Sk'}
             self.pipeline.add_module(UnicodeCategoryFilterModule(categories_to_remove))
-        if self.parameters["remove_page_numbers"]:
-            self.pipeline.add_module(PageNumberRemovalModule())  
-        if self.parameters["remove_bibliographical_references"]:
-            self.pipeline.add_module(BibliographicalReferenceRemovalModule())
         if self.parameters["normalize_spacing"]:
             self.pipeline.add_module(WhitespaceNormalizationModule())
         if self.parameters["normalize_unicode"]:
@@ -288,7 +334,7 @@ class DocumentProcessor:
             return text
         processed_text = self.pipeline.process(text)
         logging.debug("Processed text through pipeline.")
-        return processed_text
+        return processed_text.strip()
     
 class ProcessingWorker(QRunnable):
     def __init__(self, processor, file_path, signals):
@@ -831,19 +877,22 @@ class ParametersDialog(QDialog):
         self.pattern_data = self.parameters.get("pattern_data", [])
 
         self.options = [
-            ("remove_break_lines", "Join Break Lines"),
-            ("lowercase", "Apply Lowercase"),
-            ("strip_html", "Strip HTML tags"),
-            ("remove_diacritics", "Diacritic Replacement"),
-            ("normalize_spacing", "Normalize Spacing"),
-            ("remove_stop_words", "Remove Stop Words"),
-            ("word_tokenization", "Word Tokenization"),
+            ("remove_page_numbers", "Remove Page Numbers"),
+            ("remove_roman_page_numbers", "Remove Roman Numeral Page Numbers"),
+            ("remove_page_indicators", "Remove Page Indicators (e.g., 'Page xvi')"),
+            ("remove_bibliographical_references", "Remove Bibliographical References"),
             ("remove_greek", "Remove Greek letters"),
             ("remove_cyrillic", "Remove Cyrillic Script"),
             ("remove_super_sub_script", "Remove Superscript and Subscript Characters"),
-            ("remove_bibliographical_references", "Remove Bibliographical References"),
+            ("remove_diacritics", "Diacritic Replacement"),
+            ("strip_html", "Strip HTML tags"),
+            ("lowercase", "Apply Lowercase"),
+            ("normalize_spacing", "Normalize Spacing"),
+            ("remove_stop_words", "Remove Stop Words"),
+            ("word_tokenization", "Word Tokenization"),
             ("normalize_unicode", "Normalize Unicode"),
-            ("remove_page_numbers", "Remove Page Numbers"),
+            ("normalize_line_breaks", "Normalize Line Breaks"),
+            ("remove_break_lines", "Join Break Lines"),
         ]
 
         descriptions = {
@@ -854,8 +903,9 @@ class ParametersDialog(QDialog):
             "remove_bibliographical_references": "Eliminate bibliographical citations such as (Alves 1994) from the text.\nIt matches all occurrences that follow this pattern: '(' + capitalized word + any characters in between + a four-digit number + ')'.",
             "normalize_unicode": "Standardize text encoding to ensure consistency across the corpus.",
             "remove_page_numbers": "Delete standalone page numbers that are isolated on their own lines within the text.",
-            "normalize_unicode": "Standardize text encoding by removing non-UTF-8 characters to ensure consistency across the corpus.",
-            "remove_page_numbers": "Delete standalone page numbers that are isolated on their own lines within the text.",
+            "remove_roman_page_numbers": "Remove standalone Roman numeral page numbers that appear on their own lines.",
+            "remove_page_indicators": "Remove occurrences of page indicators like 'Page xvi', 'pag. xvi', considering different capitalizations and abbreviations.",
+            "normalize_line_breaks": "Automatically fix irregular line breaks and remove scattered characters resulting from PDF-to-text conversions, ensuring coherent and readable text.",
         }
 
         tabs = QTabWidget()
@@ -881,7 +931,7 @@ class ParametersDialog(QDialog):
                 h_layout.addWidget(info_button)
             h_layout.addStretch()
             vbox_layout.addLayout(h_layout)
-        
+
         general_layout.addLayout(vbox_layout)
         general_layout.addStretch()
 
@@ -889,25 +939,25 @@ class ParametersDialog(QDialog):
         regex_button.clicked.connect(self.open_regex_dialog)
         regex_button.setToolTip("Define advanced regex patterns")
         advanced_layout.addWidget(regex_button)
-        
+
         self.regex_display = QPlainTextEdit()
         self.regex_display.setReadOnly(True)
         self.regex_display.setPlainText(self.parameters.get("regex_pattern") or "None")
         self.regex_display.setFont(QFont("Courier New", 10))
         self.regex_display.setStyleSheet("background-color: #1E1E1E; color: #FFFFFF;")
         self.regex_highlighter = RegexHighlighter(self.regex_display.document())
-        
+
         advanced_layout.addWidget(QLabel("Current pattern:"))
         advanced_layout.addWidget(self.regex_display)
-        
+
         char_remove_button = QPushButton("Select Characters or Sequences to Remove")
         char_remove_button.clicked.connect(self.open_char_selection)
         char_remove_button.setToolTip("Select specific characters or sequences to remove")
-        
+
         advanced_layout.addWidget(char_remove_button)
         self.char_list_widget = QListWidget()
         self.update_char_list()
-        
+
         advanced_layout.addWidget(QLabel("Selected items:"))
         advanced_layout.addWidget(self.char_list_widget)
         advanced_layout.addStretch()
@@ -962,7 +1012,7 @@ class ParametersDialog(QDialog):
             key = next((k for k, v in self.options if v == checkbox.text()), None)
             if key:
                 checkbox.setChecked(self.parameters.get(key, False))
-
+                
     def get_parameters(self):
         return self.parameters
     
@@ -1088,6 +1138,7 @@ class ReportWorker(QObject):
         self.processed_results = processed_results
         self.nlp = get_spacy_model()
         self.batch_size = 100
+        self.chunk_size = 100000  # Process text in chunks of 100,000 characters
 
     def run(self):
         try:
@@ -1135,7 +1186,7 @@ class ReportWorker(QObject):
                     if best_guess:
                         encoding = best_guess.encoding
                     else:
-                        encoding = 'utf-8'  # Fallback
+                        encoding = 'utf-8'  
 
                 with open(file_path, 'r', encoding=encoding, errors='replace') as file:
                     text = file.read()
@@ -1146,11 +1197,13 @@ class ReportWorker(QObject):
                 tokens = text.split()
                 batch_words += len(tokens)
             else:
-                doc = self.nlp(text)
-                batch_words += len([token for token in doc if not token.is_space])
+                for i in range(0, len(text), self.chunk_size):
+                    chunk = text[i:i+self.chunk_size]
+                    doc = self.nlp(chunk)
+                    batch_words += len([token for token in doc if not token.is_space])
 
         return batch_words, batch_size
-                                         
+                                            
 class WorkerSignals(QObject):
     result = Signal(str)
     error = Signal(str)
@@ -1181,6 +1234,8 @@ class PreprocessorGUI(QMainWindow):
         self.report_worker = None
         self.lock = Lock()
         self.previous_search_term = ''
+        self.previous_text_edit = None
+
         self.init_ui()
 
     def init_ui(self):
@@ -1198,6 +1253,7 @@ class PreprocessorGUI(QMainWindow):
         self.search_input.returnPressed.connect(self.search_text)
         self.prev_button.clicked.connect(self.go_to_previous_occurrence)
         self.next_button.clicked.connect(self.go_to_next_occurrence)
+        self.text_tabs.currentChanged.connect(self.on_tab_changed)
         self.signals.update_progress.connect(self.update_progress)
         self.signals.result.connect(self.handle_result)
         self.signals.error.connect(self.handle_error)
@@ -1239,30 +1295,17 @@ class PreprocessorGUI(QMainWindow):
         help_menu.addAction(self.documentation_action)
         self.check_updates_action = self.create_action("Check for Updates", "system-software-update", "", "Check for updates", lambda: self.check_for_updates(manual_trigger=True))
         help_menu.addAction(self.check_updates_action)
-    
-    def confirm_start_new_cleaning(self):
-        reply = QMessageBox.question(self, 'Confirm New Project',
-                                     "Are you sure you want to start a new project? All current data will be lost.",
-                                     QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
-        if reply == QMessageBox.Yes:
-            self.start_new_cleaning()
 
     def start_new_cleaning(self):
         self.file_manager.clear_files()
         self.file_list.clear()
-
         self.original_text.clear()
         self.processed_text.clear()
-
         self.current_file = None
         self.corpus_name = "Untitled Corpus"
-
         self.processor.reset_parameters()
-
-        self.clear_report()
-
+        self.clear_report()  
         self.update_status_bar()
-        self.update_report()
 
         if self.report_worker:
             self.report_thread.quit()
@@ -1271,10 +1314,17 @@ class PreprocessorGUI(QMainWindow):
 
         QMessageBox.information(self, "New Project", "A new project has been started.")
 
+    def confirm_start_new_cleaning(self):
+        reply = QMessageBox.question(self, 'Confirm New Project',
+                                     "Are you sure you want to start a new project? All current data will be lost.",
+                                     QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+        if reply == QMessageBox.Yes:
+            self.start_new_cleaning()
+
     def clear_report(self):
         for key in self.report_items:
             self.report_items[key].findChild(QLabel, "reportValue").setText("0")
-        self.summary_stack.setCurrentIndex(0)  
+        self.summary_stack.setCurrentIndex(0)
 
     def create_toolbar(self):
         self.toolbar = QToolBar()
@@ -1344,6 +1394,8 @@ class PreprocessorGUI(QMainWindow):
         self.processed_text.setReadOnly(True)
         self.text_tabs.addTab(self.original_text, "Original Text")
         self.text_tabs.addTab(self.processed_text, "Processed Text")
+        self.text_tabs.currentChanged.connect(self.on_tab_changed)
+
         text_layout.addWidget(self.text_tabs)
 
         # Search Layout
@@ -1594,10 +1646,8 @@ class PreprocessorGUI(QMainWindow):
             number_to_display = dialog.get_number_of_files()
             self.items_per_page = number_to_display
         else:
-            # User cancelled the dialog
             return
 
-        # Proceed with processing
         self.processing_dialog = FileLoadingDialog(self, title="Processing Files...")
         self.processing_dialog.show()
         self.signals.update_progress.connect(self.processing_dialog.update_progress)
@@ -1670,7 +1720,7 @@ class PreprocessorGUI(QMainWindow):
             self._generate_report(processed=True, processed_results=self.processed_results)
 
     def display_results(self, results, warnings):
-        self.results = results  # Store results
+        self.results = results 
         self.current_page = 0
         self.display_page(items_per_page=self.items_per_page)  # Display specified number of files
 
@@ -1680,7 +1730,7 @@ class PreprocessorGUI(QMainWindow):
 
     def display_page(self, page_number=0, items_per_page=None):
         if items_per_page is None:
-            page_results = self.results  # Display all results
+            page_results = self.results  
         else:
             start = page_number * items_per_page
             end = start + items_per_page
@@ -1699,7 +1749,6 @@ class PreprocessorGUI(QMainWindow):
             self.processed_text.clear()
             for file_path in self.file_manager.get_files():
                 try:
-                    # Encoding detection
                     with open(file_path, 'rb') as f:
                         raw_data = f.read()
                         result = from_bytes(raw_data)
@@ -1709,7 +1758,6 @@ class PreprocessorGUI(QMainWindow):
                         else:
                             encoding = 'utf-8'  # Fallback encoding
 
-                    # Read with detected encoding
                     with open(file_path, 'r', encoding=encoding, errors='replace') as file:
                         original_text = file.read()
 
@@ -1722,22 +1770,6 @@ class PreprocessorGUI(QMainWindow):
             self.original_text.clear()
             self.processed_text.clear()
             self.current_file = None
-
-    def start_new_cleaning(self):
-        self.file_manager.clear_files()
-        self.file_list.clear()
-        self.original_text.clear()
-        self.processed_text.clear()
-        self.current_file = None
-        self.corpus_name = "Untitled Corpus"
-        self.update_status_bar()
-
-        if self.report_worker:
-            self.report_thread.quit()
-            self.report_thread.wait()
-            self.report_worker = None
-
-        self.update_report()  
 
     def open_parameters_dialog(self):
         dialog = ParametersDialog(self.processor.get_parameters(), self)
@@ -1861,55 +1893,90 @@ class PreprocessorGUI(QMainWindow):
         self.update_occurrence_label()
 
     def search_text(self):
-        search_term = self.search_input.text()
+        search_term = self.search_input.text().strip()
         active_text_edit = self.text_tabs.currentWidget()
         if not isinstance(active_text_edit, QPlainTextEdit):
             return
 
-        if search_term != self.previous_search_term:
-            self.previous_search_term = search_term
-            self.current_occurrence_index = 0
-        else:
-            self.go_to_next_occurrence()
-            return
-
-        self.highlight_search_term(active_text_edit, search_term, self.current_occurrence_index)
-        if self.search_results:
-            self.goto_occurrence(active_text_edit, self.current_occurrence_index)
-            self.update_occurrence_label()
-        else:
+        # If the search term is empty, clear highlights and exit
+        if not search_term:
+            self.search_results = []
             self.current_occurrence_index = -1
             self.update_occurrence_label()
-            QMessageBox.information(self, "Not Found", f"The text '{search_term}' was not found.")
+            active_text_edit.setExtraSelections([])
+            return
+
+        if search_term != self.previous_search_term or active_text_edit != self.previous_text_edit:
+            self.previous_search_term = search_term
+            self.previous_text_edit = active_text_edit
+            self.current_occurrence_index = 0
+
+            self.highlight_search_term(active_text_edit, search_term, self.current_occurrence_index)
+            if self.search_results:
+                self.goto_occurrence(active_text_edit, self.current_occurrence_index)
+                self.update_occurrence_label()
+            else:
+                self.current_occurrence_index = -1
+                self.update_occurrence_label()
+                QMessageBox.information(self, "Not Found", f"The occurrence '{search_term}' was not found in the current text.")
+        else:
+            if self.search_results:
+                self.go_to_next_occurrence()
+            else:
+                QMessageBox.information(self, "Not Found", f"The occurrence '{search_term}' was not found.")
 
     def go_to_next_occurrence(self):
-        search_term = self.search_input.text()
+        search_term = self.search_input.text().strip()
         active_text_edit = self.text_tabs.currentWidget()
         if not isinstance(active_text_edit, QPlainTextEdit):
             return
-        if not self.search_results or search_term != self.previous_search_term:
-            self.search_text()
-        else:
-            if self.search_results:
-                self.current_occurrence_index = (self.current_occurrence_index + 1) % len(self.search_results)
-                self.highlight_search_term(active_text_edit, search_term, self.current_occurrence_index)
-                self.goto_occurrence(active_text_edit, self.current_occurrence_index)
-                self.update_occurrence_label()
 
+        # If the search term is empty, do nothing
+        if not search_term:
+            return
+
+        if not self.search_results or search_term != self.previous_search_term or active_text_edit != self.previous_text_edit:
+            self.search_text()
+            return
+        if not self.search_results:
+            QMessageBox.information(self, "Not Found", f"The occurrence '{search_term}' was not found.")
+            return
+
+        self.current_occurrence_index = (self.current_occurrence_index + 1) % len(self.search_results)
+        self.highlight_search_term(active_text_edit, search_term, self.current_occurrence_index)
+        self.goto_occurrence(active_text_edit, self.current_occurrence_index)
+        self.update_occurrence_label()
+
+        self.current_occurrence_index = (self.current_occurrence_index + 1) % len(self.search_results)
+        self.highlight_search_term(active_text_edit, search_term, self.current_occurrence_index)
+        self.goto_occurrence(active_text_edit, self.current_occurrence_index)
+        self.update_occurrence_label()
+        
     def go_to_previous_occurrence(self):
-        search_term = self.search_input.text()
+        search_term = self.search_input.text().strip()
         active_text_edit = self.text_tabs.currentWidget()
         if not isinstance(active_text_edit, QPlainTextEdit):
             return
-        if not self.search_results or search_term != self.previous_search_term:
-            self.search_text()
-        else:
-            if self.search_results:
-                self.current_occurrence_index = (self.current_occurrence_index - 1) % len(self.search_results)
-                self.highlight_search_term(active_text_edit, search_term, self.current_occurrence_index)
-                self.goto_occurrence(active_text_edit, self.current_occurrence_index)
-                self.update_occurrence_label()
 
+        # If the search term is empty, do nothing
+        if not search_term:
+            return
+
+        if not self.search_results or search_term != self.previous_search_term or active_text_edit != self.previous_text_edit:
+            self.search_text()
+            return
+        if not self.search_results:
+            QMessageBox.information(self, "Not Found", f"The occurrence '{search_term}' was not found.")
+            return
+
+        self.current_occurrence_index = (self.current_occurrence_index - 1) % len(self.search_results)
+        self.highlight_search_term(active_text_edit, search_term, self.current_occurrence_index)
+        self.goto_occurrence(active_text_edit, self.current_occurrence_index)
+        self.update_occurrence_label()
+
+    def on_tab_changed(self, index):
+        self.search_text()        
+        
     def update_occurrence_label(self):
         total = len(self.search_results)
         current = self.current_occurrence_index + 1 if self.current_occurrence_index >= 0 else 0
@@ -1926,7 +1993,7 @@ class PreprocessorGUI(QMainWindow):
             active_text_edit.redo()
 
     def update_report_display(self, report_data):
-        self.summary_stack.setCurrentIndex(2)  # Switch to the report content
+        self.summary_stack.setCurrentIndex(2)  
         for key, value in report_data.items():
             if key in self.report_items:
                 if isinstance(value, float):
@@ -1957,7 +2024,7 @@ class PreprocessorGUI(QMainWindow):
         self.summary_stack.setCurrentIndex(1)
                     
     def display_final_report(self, report_data):
-        self.summary_stack.setCurrentIndex(2)  # Switch to the report content
+        self.summary_stack.setCurrentIndex(2)  
         for key, value in report_data.items():
             if key in self.report_items:
                 if isinstance(value, float):
@@ -1989,7 +2056,6 @@ class PreprocessorGUI(QMainWindow):
     def handle_report_error(self, error_msg):
         logging.error(f"Error in report generation: {error_msg}")
         self.status_bar.showMessage("Error generating report", 5000)
-        # Switch back to summary_text and display the error message
         self.summary_stack.setCurrentWidget(self.summary_text)
         if hasattr(self, 'loading_movie'):
             self.loading_movie.stop()
@@ -2005,7 +2071,7 @@ class PreprocessorGUI(QMainWindow):
         self._cleanup_report_worker()
 
     def display_report(self, report_data):
-        self.summary_stack.setCurrentIndex(2)  # Switch to the report content
+        self.summary_stack.setCurrentIndex(2)  
         self.report_items['total_files'].findChild(QLabel, "reportValue").setText(str(report_data['total_files']))
         self.report_items['total_size'].findChild(QLabel, "reportValue").setText(f"{report_data['total_size']:.2f} MB")
         self.report_items['avg_size'].findChild(QLabel, "reportValue").setText(f"{report_data['avg_size']:.2f} MB")
@@ -2078,9 +2144,8 @@ def main():
         window = PreprocessorGUI()
         window.show()
         exit_code = app.exec()
-        window.cleanup()  
-        logging.info("Main window shown.")
-        sys.exit(app.exec())
+        logging.info("Application closed.")
+        sys.exit(exit_code)
     except Exception as e:
         logging.exception("An error occurred: %s", e)
 
