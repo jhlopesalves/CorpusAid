@@ -1,31 +1,58 @@
-import os
-import sys
-import re
-import unicodedata
-from charset_normalizer import from_bytes
-import logging
 import json
-import urllib.request
-import time
-import random
+import logging
 import multiprocessing
+import os
+import random
+import re
+import sys
+import threading
+import time
+import unicodedata
+import urllib.request
+
 from threading import Lock
-from PySide6.QtWidgets import (
-    QApplication, QMainWindow, QVBoxLayout, QHBoxLayout, QWidget, QPushButton, QSizePolicy,
-    QTextEdit, QProgressBar, QFileDialog, QLabel, QListWidget, QToolButton, QStyle,
-    QTabWidget, QLineEdit, QDialog, QDialogButtonBox, QCheckBox, QMessageBox,
-    QSplitter, QToolBar, QStatusBar, QListWidgetItem,
-    QPlainTextEdit, QWizard, QWizardPage, QTableWidget, QComboBox, QHeaderView, QStackedWidget, QGridLayout
-)
-from PySide6.QtCore import Qt, Signal, QObject, QThread, QSize, QRunnable, QThreadPool, QUrl, QTimer, QRegularExpression
-from PySide6.QtGui import (
-    QIcon, QFont, QColor, QAction, QPainter, QIntValidator, QTextCursor, QTextCharFormat, QSyntaxHighlighter, QDesktopServices, QKeySequence, QFontDatabase
-)
-from PySide6.QtWebEngineWidgets import QWebEngineView
+
 from bs4 import BeautifulSoup
+from charset_normalizer import from_bytes
 import spacy
 from spacy.lang.en.stop_words import STOP_WORDS
-import threading
+
+from PySide6.QtCore import (
+    QObject, QRunnable, QRegularExpression, QSize, QThread, QThreadPool, QTimer, QUrl, Qt, Signal,
+)
+from PySide6.QtGui import (
+    QAction, QColor, QDesktopServices, QFont, QFontDatabase, QIcon, QIntValidator, QKeySequence, QPainter, QSyntaxHighlighter, QTextCharFormat, QTextCursor,
+)
+from PySide6.QtWebEngineWidgets import QWebEngineView
+from PySide6.QtWidgets import (
+    QApplication, QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFileDialog, QGridLayout, QHeaderView, QHBoxLayout,
+    QLabel, QLineEdit, QListWidget, QListWidgetItem, QMainWindow, QMessageBox, QPlainTextEdit, QProgressBar, QPushButton,
+    QSizePolicy, QSplitter, QStackedWidget, QStatusBar, QStyle, QTabWidget, QTableWidget, QTextEdit, QToolBar, QToolButton,
+    QVBoxLayout, QWidget, QWizard, QWizardPage,
+)
+
+class ErrorHandler:
+    @staticmethod
+    def show_error(message, title="Error", parent=None):
+        logging.error(message)
+        QMessageBox.warning(parent, title, message)
+    
+    @staticmethod
+    def show_warning(message, title="Warning", parent=None):
+        logging.warning(message)
+        QMessageBox.warning(parent, title, message)
+
+class AppSignals(QObject):
+    result = Signal(str, str, str, int, float) 
+    error = Signal(str, str)
+    warning = Signal(str, str)
+    finished = Signal()
+    update_progress = Signal(int, int, float, str)
+    processing_complete = Signal(list, list)
+    report_ready = Signal(str, str)
+    worker_result = Signal(str)
+    worker_error = Signal(str)
+    worker_finished = Signal()
 
 # resource_path function to get the path of the resource file
 def resource_path(relative_path): 
@@ -63,16 +90,23 @@ class PreprocessingModule:
 
 class CharacterFilterModule(PreprocessingModule):
     def __init__(self, chars_to_remove):
-        self.chars_to_remove = sorted(chars_to_remove, key=len, reverse=True)
-
+        print(f"Received sequences to remove: {chars_to_remove}")  # Debug
+        # Escape special regex characters and preserve whitespace
+        escaped_sequences = [re.escape(seq) for seq in chars_to_remove]
+        print(f"Escaped sequences: {escaped_sequences}")  # Debug
+        # Join patterns with OR operator
+        pattern = '|'.join(f'(?:{seq})' for seq in escaped_sequences)
+        print(f"Final pattern: {pattern}")  # Debug
+        self.pattern = re.compile(pattern)
+    
     def process(self, text):
-        for item in self.chars_to_remove:
-            text = text.replace(item, '')
-        return text
+        print(f"Before filtering: {text}")  # Debug
+        result = self.pattern.sub('', text)
+        print(f"After filtering: {result}")  # Debug
+        return result
 
 class LineBreakNormalizationModule(PreprocessingModule):
     def __init__(self):
-        super().__init__()
         self.scattered_chars_pattern = re.compile(r'(\b\w\b)', re.MULTILINE)
         self.line_break_pattern = re.compile(r'(?<!\.\s)\n(?!\s*\n)', re.MULTILINE)
 
@@ -84,32 +118,41 @@ class LineBreakNormalizationModule(PreprocessingModule):
 
 class PageNumberRemovalModule(PreprocessingModule):
     def __init__(self):
-        super().__init__()
-        self.pattern = re.compile(r'(?:\n\s*){1,2}\d{1,4}(?:\s*\n){1,2}', re.MULTILINE)
-    
+        self.pattern = re.compile(r'^\s*\d{1,4}\s*$', re.MULTILINE)
+        
     def process(self, text):
-        return self.pattern.sub('\n', text)
+        return self.pattern.sub('', text)
 
 class RomanPageNumberRemovalModule(PreprocessingModule):
     def __init__(self):
-        super().__init__()
         self.pattern = re.compile(
-            r'(?:\n\s*){1,2}'
-            r'(?P<roman>[IVXLCDM]{1,7})'
-            r'(?:\s*\n){1,2}',
+            r'^\s*'                           # Start of line with optional whitespace
+            r'(?P<roman>[IiVvXxLlCcDdMm]{1,7})'  # Roman numerals (both cases)
+            r'\s*$',                          # End of line with optional whitespace
             re.MULTILINE
         )
+    
     def process(self, text):
-        return self.pattern.sub('\n', text)
-
+        return self.pattern.sub('', text)
+    
 class PageIndicatorRemovalModule(PreprocessingModule):
     def __init__(self):
-        super().__init__()
         self.pattern = re.compile(
             r'\b(?:[Pp]age|[Pp]ag\.?)\s+'
             r'(?P<number>\d+|[IVXLCDM]+)\b',
             re.MULTILINE
         )
+    def process(self, text):
+        return self.pattern.sub('', text)
+
+class PageDelimiterRemovalModule(PreprocessingModule):
+    def __init__(self):
+        # Pattern matches "--- Page X ---" where X is any number
+        self.pattern = re.compile(
+            r'---\s*Page\s+\d+\s*---',
+            re.MULTILINE
+        )
+    
     def process(self, text):
         return self.pattern.sub('', text)
 
@@ -132,7 +175,6 @@ class LineBreakRemovalModule(PreprocessingModule):
 
 class BibliographicalReferenceRemovalModule(PreprocessingModule):
     def __init__(self):
-        super().__init__()
         self.pattern = re.compile(r'\([A-Z][a-z]+(?:[^()]*?\d{4}[^()]*?)?\)')
     
     def process(self, text: str) -> str:
@@ -159,13 +201,12 @@ class TokenBasedModule(PreprocessingModule):
 
 class RegexSubstitutionModule(PreprocessingModule): 
     def __init__(self, pattern, replacement=''):
-        super().__init__()
         try:
             self.pattern = re.compile(pattern, re.DOTALL)
             logging.debug(f"Compiled regex pattern: {pattern}")
         except re.error as e:
             logging.error(f"Invalid regex pattern: {pattern}\nError: {str(e)}")
-            QMessageBox.warning(None, "Invalid Regex Pattern", f"The entered regex pattern is invalid:\n{str(e)}")
+            ErrorHandler.show_error(f"The entered regex pattern is invalid:\n{str(e)}", "Invalid Regex Pattern", parent=None)
             self.pattern = None
         self.replacement = replacement
 
@@ -247,7 +288,8 @@ class DocumentProcessor:
         "remove_super_sub_script": False,
         "remove_roman_page_numbers": False,
         "remove_page_indicators": False,
-        "remove_page_numbers": False,  
+        "remove_page_numbers": False,
+        "remove_page_delimiters": False,  
         "remove_bibliographical_references": False,
         "normalize_spacing": False,
         "normalize_unicode": False,
@@ -273,10 +315,10 @@ class DocumentProcessor:
             logging.debug(f"Updated parameters: {self.parameters}")
         except re.error as e:
             logging.error(f"Invalid regex pattern: {e}")
-            QMessageBox.warning(None, "Invalid Regex Pattern", f"The entered regex pattern is invalid:\n{str(e)}")
+            ErrorHandler.show_error(f"The entered regex pattern is invalid:\n{str(e)}", "Invalid Regex Pattern", parent=None)
         except ValueError as e:
             logging.error(f"Parameter validation error: {e}")
-            QMessageBox.warning(None, "Parameter Error", str(e))
+            ErrorHandler.show_error(str(e), "Parameter Error", parent=None)
 
     def reset_parameters(self):
         self.parameters = self.default_parameters.copy()
@@ -284,20 +326,22 @@ class DocumentProcessor:
 
     def update_pipeline(self):
         self.pipeline = PreprocessingPipeline()
-        #first
+        # First
         if self.parameters["regex_pattern"]:
             self.pipeline.add_module(RegexSubstitutionModule(self.parameters["regex_pattern"]))
-        #second
-        if self.parameters["chars_to_remove"]:
-            self.pipeline.add_module(CharacterFilterModule(self.parameters["chars_to_remove"]))
-        #third
+        # Second
         if self.parameters["remove_page_numbers"]:
             self.pipeline.add_module(PageNumberRemovalModule())
         if self.parameters["remove_roman_page_numbers"]:
             self.pipeline.add_module(RomanPageNumberRemovalModule())
         if self.parameters["remove_page_indicators"]:
-            self.pipeline.add_module(PageIndicatorRemovalModule())  
-        #fourth
+            self.pipeline.add_module(PageIndicatorRemovalModule())
+        if self.parameters["remove_page_delimiters"]:
+            self.pipeline.add_module(PageDelimiterRemovalModule())  
+        # Third
+        if self.parameters["chars_to_remove"]:
+            self.pipeline.add_module(CharacterFilterModule(self.parameters["chars_to_remove"]))
+        # Fourth
         if self.parameters["remove_bibliographical_references"]:
             self.pipeline.add_module(BibliographicalReferenceRemovalModule())           
         if self.parameters["strip_html"]:
@@ -376,15 +420,6 @@ class ProcessingWorker(QRunnable):
             return
         finally:
             self.signals.finished.emit()
-
-class ProcessingSignals(QObject):
-    result = Signal(str, str, str, int, float) 
-    error = Signal(str, str)
-    warning = Signal(str, str)
-    finished = Signal()
-    update_progress = Signal(int, int, float, str)
-    processing_complete = Signal(list, list)
-    report_ready = Signal(str, str)
 
 class FileManager:
     def __init__(self):
@@ -743,7 +778,7 @@ class AdvancedPatternBuilder(QWizard):
                         raise ValueError("Number Length must be a positive integer for Multiple Numbers.")
                     end = r'\d{' + data["number_length"] + '}'
                     pattern = rf"{start}.*?{end}"
-                else:  # Specific Word
+                else:  # Specific Sequence
                     end = re.escape(data["end"])
                     pattern = rf"{start}.*?{end}"
                 patterns.append(pattern)
@@ -756,17 +791,17 @@ class AdvancedPatternBuilder(QWizard):
             self.explanation.setText(f"This pattern will match: {', '.join(patterns)}")
             logging.debug(f"Final regex pattern: {final_pattern} with flags: {flags}")
         except re.error as e:
-            QMessageBox.warning(self, "Invalid Pattern", f"The entered pattern is invalid:\n{str(e)}")
+            ErrorHandler.show_error(f"The entered pattern is invalid:\n{str(e)}", "Invalid Pattern", self)
             logging.error(f"Invalid regex pattern: {str(e)}")
         except ValueError as ve:
-            QMessageBox.warning(self, "Invalid Input", str(ve))
+            ErrorHandler.show_error(str(ve), "Invalid Input", self)
             logging.error(f"Invalid input for pattern: {str(ve)}")
 
     def testPattern(self):
         self.updatePattern()
         text = self.test_input.toPlainText()
         if not hasattr(self, 'final_pattern') or not self.final_pattern:
-            QMessageBox.warning(self, "No Pattern", "Please define a valid pattern first.")
+            ErrorHandler.show_error("Please define a valid pattern first.", "No Pattern Defined", self)
             return
         try:
             matches = list(self.final_pattern.finditer(text))
@@ -783,11 +818,11 @@ class AdvancedPatternBuilder(QWizard):
                 cursor.setCharFormat(text_format)
             cursor.endEditBlock()
             if not matches:
-                QMessageBox.information(self, "No Matches", "The pattern did not match any text in the sample.")
+                ErrorHandler.show_warning(f"The pattern did not match any text in the sample.", "No Matches Found", self)
             else:
-                QMessageBox.information(self, "Matches Found", f"Found {len(matches)} matches.")
+                ErrorHandler.show_warning(f"Found {len(matches)} matches.", "Matches Found", self)
         except Exception as e:
-            QMessageBox.warning(self, "Error", f"An error occurred while testing the pattern:\n{str(e)}")
+            ErrorHandler.show_error(f"An error occurred while testing the pattern:\n{str(e)}", "Error Testing Pattern", self)
             logging.error(f"Error testing pattern: {str(e)}")
 
     def getPattern(self):
@@ -862,7 +897,7 @@ class FileDisplayDialog(QDialog):
             if 1 <= value <= self.total_files:
                 self.accept()
                 return
-        QMessageBox.warning(self, "Invalid Input", f"Please enter a valid number between 1 and {self.total_files}.")
+        ErrorHandler.show_error(f"Please enter a valid number between 1 and {self.total_files}.", "Invalid Input", self)
 
     def get_number_of_files(self):
         return int(self.input_field.text())
@@ -871,80 +906,102 @@ class ParametersDialog(QDialog):
     def __init__(self, current_parameters, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Processing Parameters")
-        self.setMinimumSize(200, 400)
+        
+        # Set optimal dimensions
+        self.setMinimumSize(450, 300)  # Wider to show tabs, shorter height
+        self.setMaximumSize(600, 500)  # Prevent dialog from getting too large
+        
+        # Create main layout with reduced margins
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(10, 10, 10, 10)  # Reduce outer margins
+        layout.setSpacing(5)  # Reduce spacing between elements
+        
+        # Initialize parameters
         self.parameters = current_parameters.copy()
         self.pattern_data = self.parameters.get("pattern_data", [])
 
-        self.options = [
-            ("remove_page_numbers", "Remove Page Numbers"),
-            ("remove_roman_page_numbers", "Remove Roman Numeral Page Numbers"),
-            ("remove_page_indicators", "Remove Page Indicators (e.g., 'Page xvi')"),
-            ("remove_bibliographical_references", "Remove Bibliographical References"),
-            ("remove_greek", "Remove Greek letters"),
-            ("remove_cyrillic", "Remove Cyrillic Script"),
-            ("remove_super_sub_script", "Remove Superscript and Subscript Characters"),
-            ("remove_diacritics", "Diacritic Replacement"),
-            ("strip_html", "Strip HTML tags"),
-            ("lowercase", "Apply Lowercase"),
-            ("normalize_spacing", "Normalize Spacing"),
-            ("remove_stop_words", "Remove Stop Words"),
-            ("word_tokenization", "Word Tokenization"),
-            ("normalize_unicode", "Normalize Unicode"),
-            ("normalize_line_breaks", "Normalize Line Breaks"),
-            ("remove_break_lines", "Join Break Lines"),
-        ]
-
-        descriptions = {
-            "remove_diacritics": "Replace diacritical marks (accents) from characters, standardizing the text (e.g., 'João' becomes 'Joao').",
-            "normalize_spacing": "Adjust spacing to ensure consistent formatting throughout the text.",
-            "remove_stop_words": "Eliminate common stop words (prepositions, determiners, conjunctions and non-meaningful words)\nto focus on significant words in the corpus.",
-            "word_tokenization": "Split the text into individual words (tokens) for analysis.",
-            "remove_bibliographical_references": "Eliminate bibliographical citations such as (Alves 1994) from the text.\nIt matches all occurrences that follow this pattern: '(' + capitalized word + any characters in between + a four-digit number + ')'.",
-            "normalize_unicode": "Standardize text encoding to ensure consistency across the corpus.",
+        self.descriptions = {
+            # Basic Cleanup
             "remove_page_numbers": "Delete standalone page numbers that are isolated on their own lines within the text.",
             "remove_roman_page_numbers": "Remove standalone Roman numeral page numbers that appear on their own lines.",
             "remove_page_indicators": "Remove occurrences of page indicators like 'Page xvi', 'pag. xvi', considering different capitalizations and abbreviations.",
-            "normalize_line_breaks": "Automatically fix irregular line breaks and remove scattered characters resulting from PDF-to-text conversions, ensuring coherent and readable text.",
+            "remove_page_delimiters": "Remove page delimiter markers (e.g., '--- Page 123 ---') that are created by the PDF converter.",
+            "normalize_spacing": "Adjust spacing to ensure consistent formatting throughout the text.",
+            "remove_break_lines": "Join all line breaks into a single continuous text.",
+            "normalize_line_breaks": "Fix irregular line breaks and remove scattered characters from PDF-to-text conversions.",
+            
+            # Text Transformation
+            "lowercase": "Convert all text to lowercase characters.",
+            "normalize_unicode": "Standardize text encoding to ensure consistency.",
+            "remove_diacritics": "Replace diacritical marks (accents) from characters (e.g., 'João' becomes 'Joao').",
+            "word_tokenization": "Split the text into individual words (tokens) for analysis.",
+            "remove_stop_words": "Eliminate common words (prepositions, articles, etc.) that typically don't carry significant meaning.",
+            
+            # Character Sets
+            "remove_greek": "Remove all Greek alphabet characters from the text.",
+            "remove_cyrillic": "Remove all Cyrillic alphabet characters from the text.",
+            "remove_super_sub_script": "Remove superscript and subscript characters.",
+            "strip_html": "Remove any HTML markup tags from the text.",
+            
+            # Advanced
+            "remove_bibliographical_references": "Remove citations like (Author 1994) from the text."
         }
 
         tabs = QTabWidget()
-        general_tab = QWidget()
-        general_layout = QVBoxLayout(general_tab)
+        
+        # Basic Cleanup Tab
+        basic_tab = QWidget()
+        basic_layout = QVBoxLayout(basic_tab)
+        basic_options = [
+            ("remove_page_delimiters", "Remove Page Delimiters (--- Page X ---)"),  
+            ("remove_page_numbers", "Remove Page Numbers"),
+            ("remove_roman_page_numbers", "Remove Roman Numeral Page Numbers"),
+            ("remove_page_indicators", "Remove Page Indicators (e.g., 'Page xvi')"),
+            ("normalize_spacing", "Normalize Spacing"),
+            ("remove_break_lines", "Join Break Lines"),
+            ("normalize_line_breaks", "Normalize Line Breaks")
+        ]
+
+        self.add_options_to_layout(basic_layout, basic_options)
+        tabs.addTab(basic_tab, "Basic Cleanup")
+
+        # Text Transformation Tab
+        transform_tab = QWidget()
+        transform_layout = QVBoxLayout(transform_tab)
+        transform_options = [
+            ("lowercase", "Apply Lowercase"),
+            ("normalize_unicode", "Normalize Unicode"),
+            ("remove_diacritics", "Diacritic Replacement"),
+            ("word_tokenization", "Word Tokenization"),
+            ("remove_stop_words", "Remove Stop Words")
+        ]
+        self.add_options_to_layout(transform_layout, transform_options)
+        tabs.addTab(transform_tab, "Text Transformation")
+
+        # Character Sets Tab
+        charset_tab = QWidget()
+        charset_layout = QVBoxLayout(charset_tab)
+        charset_options = [
+            ("remove_greek", "Remove Greek letters"),
+            ("remove_cyrillic", "Remove Cyrillic Script"),
+            ("remove_super_sub_script", "Remove Superscript and Subscript Characters"),
+            ("strip_html", "Strip HTML tags")
+        ]
+        self.add_options_to_layout(charset_layout, charset_options)
+        tabs.addTab(charset_tab, "Character Sets")
+
+        # Advanced Tab
         advanced_tab = QWidget()
         advanced_layout = QVBoxLayout(advanced_tab)
-
-        vbox_layout = QVBoxLayout()
-        for key, label in self.options:
-            h_layout = QHBoxLayout()
-            checkbox = QCheckBox(label)
-            checkbox.setChecked(self.parameters.get(key, False))
-            checkbox.stateChanged.connect(lambda state, k=key: self.parameters.update({k: bool(state)}))
-            checkbox.setToolTip(f"Enable or disable {label.lower()}")
-            h_layout.addWidget(checkbox)
-            if key in descriptions:
-                info_button = QToolButton()
-                info_button.setIcon(self.style().standardIcon(getattr(QStyle, 'SP_MessageBoxInformation')))
-                info_button.setFixedSize(16, 16)
-                info_button.setToolTip(descriptions[key])
-                info_button.setStyleSheet("QToolButton { border: none; background-color: transparent; }")
-                h_layout.addWidget(info_button)
-            h_layout.addStretch()
-            vbox_layout.addLayout(h_layout)
-
-        general_layout.addLayout(vbox_layout)
-        general_layout.addStretch()
-
+        
         regex_button = QPushButton("Define Patterns with Regex")
         regex_button.clicked.connect(self.open_regex_dialog)
-        regex_button.setToolTip("Define advanced regex patterns")
         advanced_layout.addWidget(regex_button)
 
         self.regex_display = QPlainTextEdit()
         self.regex_display.setReadOnly(True)
         self.regex_display.setPlainText(self.parameters.get("regex_pattern") or "None")
         self.regex_display.setFont(QFont("Courier New", 10))
-        self.regex_display.setStyleSheet("background-color: #1E1E1E; color: #FFFFFF;")
         self.regex_highlighter = RegexHighlighter(self.regex_display.document())
 
         advanced_layout.addWidget(QLabel("Current pattern:"))
@@ -952,18 +1009,20 @@ class ParametersDialog(QDialog):
 
         char_remove_button = QPushButton("Select Characters or Sequences to Remove")
         char_remove_button.clicked.connect(self.open_char_selection)
-        char_remove_button.setToolTip("Select specific characters or sequences to remove")
-
         advanced_layout.addWidget(char_remove_button)
+
         self.char_list_widget = QListWidget()
         self.update_char_list()
-
         advanced_layout.addWidget(QLabel("Selected items:"))
         advanced_layout.addWidget(self.char_list_widget)
-        advanced_layout.addStretch()
 
-        tabs.addTab(general_tab, "General")
+        advanced_options = [
+            ("remove_bibliographical_references", "Remove Bibliographical References")
+        ]
+        self.add_options_to_layout(advanced_layout, advanced_options)
+        
         tabs.addTab(advanced_tab, "Advanced")
+
         layout.addWidget(tabs)
 
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
@@ -972,6 +1031,34 @@ class ParametersDialog(QDialog):
         layout.addWidget(buttons)
 
         self.update_checkboxes()
+
+    def add_options_to_layout(self, layout, options):
+        for key, label in options:
+            h_layout = QHBoxLayout()
+            
+            checkbox = QCheckBox(label)
+            checkbox.setChecked(self.parameters.get(key, False))
+            checkbox.stateChanged.connect(lambda state, k=key: self.parameters.update({k: bool(state)}))
+            
+            if key in self.descriptions:
+                checkbox.setToolTip(self.descriptions[key])
+                
+                info_button = QToolButton()
+                info_button.setIcon(self.style().standardIcon(QStyle.SP_MessageBoxInformation))
+                info_button.setToolTip(self.descriptions[key])
+                info_button.setFixedSize(16, 16)
+                info_button.setStyleSheet("QToolButton { border: none; background-color: transparent; }")
+                
+                h_layout.addWidget(checkbox)
+                h_layout.addWidget(info_button)
+                h_layout.addStretch()
+            else:
+                h_layout.addWidget(checkbox)
+                h_layout.addStretch()
+                
+            layout.addLayout(h_layout)
+            
+        layout.addStretch()
 
     def open_regex_dialog(self):
         dialog = AdvancedPatternBuilder(self)
@@ -993,7 +1080,7 @@ class ParametersDialog(QDialog):
                     self.pattern_data = dialog.getPatternData()
                     self.parameters["pattern_data"] = self.pattern_data
                 except re.error as e:
-                    QMessageBox.warning(self, "Invalid Pattern", f"The entered pattern is invalid:\n{str(e)}")
+                    ErrorHandler.show_error(f"The entered pattern is invalid:\n{str(e)}", "Invalid Pattern", self)
 
     def open_char_selection(self):
         dialog = CharacterSelectionDialog(self.parameters.get("chars_to_remove", []), self)
@@ -1009,17 +1096,35 @@ class ParametersDialog(QDialog):
 
     def update_checkboxes(self):
         for checkbox in self.findChildren(QCheckBox):
-            key = next((k for k, v in self.options if v == checkbox.text()), None)
+            key = next((k for k, v in [
+                ("remove_page_numbers", "Remove Page Numbers"),
+                ("remove_roman_page_numbers", "Remove Roman Numeral Page Numbers"),
+                ("remove_page_indicators", "Remove Page Indicators (e.g., 'Page xvi')"),
+                ("remove_page_delimiters", "Remove Page Delimiters (--- Page X ---)"),
+                ("remove_bibliographical_references", "Remove Bibliographical References"),
+                ("remove_greek", "Remove Greek letters"),
+                ("remove_cyrillic", "Remove Cyrillic Script"),
+                ("remove_super_sub_script", "Remove Superscript and Subscript Characters"),
+                ("remove_diacritics", "Diacritic Replacement"),
+                ("strip_html", "Strip HTML tags"),
+                ("lowercase", "Apply Lowercase"),
+                ("normalize_spacing", "Normalize Spacing"),
+                ("remove_stop_words", "Remove Stop Words"),
+                ("word_tokenization", "Word Tokenization"),
+                ("normalize_unicode", "Normalize Unicode"),
+                ("normalize_line_breaks", "Normalize Line Breaks"),
+                ("remove_break_lines", "Join Break Lines"),
+            ] if v == checkbox.text()), None)
             if key:
                 checkbox.setChecked(self.parameters.get(key, False))
-                
+
     def get_parameters(self):
         return self.parameters
     
 class CharacterSelectionDialog(QDialog):
     def __init__(self, current_chars, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Select Characeters or Sequences to Remove")
+        self.setWindowTitle("Select Characters or Sequences to Remove")
         self.setMinimumSize(400, 300)
         layout = QVBoxLayout(self)
         self.selected_chars = list(current_chars)
@@ -1040,9 +1145,9 @@ class CharacterSelectionDialog(QDialog):
         delete_button.clicked.connect(self.delete_selected)
         layout.addWidget(delete_button)
         button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        layout.addWidget(button_box)
         button_box.accepted.connect(self.accept)
         button_box.rejected.connect(self.reject)
-        layout.addWidget(button_box)
         ok_button = button_box.button(QDialogButtonBox.Ok)
         if ok_button:
             ok_button.setAutoDefault(False)
@@ -1204,11 +1309,6 @@ class ReportWorker(QObject):
 
         return batch_words, batch_size
                                             
-class WorkerSignals(QObject):
-    result = Signal(str)
-    error = Signal(str)
-    finished = Signal()
-
 class PreprocessorGUI(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -1216,7 +1316,7 @@ class PreprocessorGUI(QMainWindow):
         self.file_manager = FileManager()
         self.theme_manager = ThemeManager()
         self.processor = DocumentProcessor()
-        self.signals = ProcessingSignals()
+        self.signals = AppSignals()
         self.current_file = None
         self.corpus_name = "Untitled Corpus"
         self.thread_pool = QThreadPool()
@@ -1509,6 +1609,7 @@ class PreprocessorGUI(QMainWindow):
         layout.addWidget(description_label)
         
         return widget         
+
     def setup_status_bar(self):
         self.status_bar = QStatusBar()
         self.setStatusBar(self.status_bar)
