@@ -1368,7 +1368,7 @@ class PreprocessorGUI(QMainWindow):
 
     def init_ui(self):
         self.setFocusPolicy(Qt.StrongFocus)
-        self.setWindowTitle('CorpuScript')
+        self.setWindowTitle('CorpusAid')
         self.setGeometry(100, 100, 1200, 800)
         self.setFont(QFont("Roboto", 10))
         icon_path = self.resource_path("my_icon.ico")  # Implement resource_path method
@@ -1906,7 +1906,7 @@ class PreprocessorGUI(QMainWindow):
     def show_about_dialog(self):
         QMessageBox.about(
             self, "About",
-            f"CorpuScript\nVersion {self.version}\n\nDeveloped by Jhonatan Lopes"
+            f"CorpusAid\nVersion {self.version}\n\nDeveloped by Jhonatan Lopes"
         )
 
     def show_documentation(self):
@@ -2328,7 +2328,7 @@ class PreprocessorGUI(QMainWindow):
 
     def check_for_updates(self, manual_trigger=False):
         try:
-            url = 'https://api.github.com/repos/jhlopesalves/CorpuScript/releases/latest'
+            url = 'https://api.github.com/repos/jhlopesalves/CorpusAid/releases/latest'
             with urllib.request.urlopen(url) as response:
                 data = response.read()
                 latest_release = json.loads(data.decode('utf-8'))
@@ -2382,7 +2382,7 @@ def main():
     log_dir = os.path.join(base_dir, "logs")
     if not os.path.exists(log_dir):
         os.makedirs(log_dir)
-    log_file = os.path.join(log_dir, "CorpuScript.log")
+    log_file = os.path.join(log_dir, "CorpusAid.log")
     logging.basicConfig(
         filename=log_file,
         filemode='w',

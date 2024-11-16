@@ -1,8 +1,8 @@
-# What is CorpuScript?
+# What is CorpusAid?
 
-CorpuScript is an advanced, user-friendly software tool designed specifically for preprocessing files in corpora compilation. This powerful application stands out for its ability to apply both personalized and traditional cleaning parameters across an entire corpus, regardless of its size. Whether you're working with a small collection of 10 files or a massive dataset of 10,000 documents, CorpuScript ensures consistent and accurate preprocessing.
+CorpusAid is an advanced, user-friendly software tool designed specifically for preprocessing files in corpora compilation. This powerful application stands out for its ability to apply both personalized and traditional cleaning parameters across an entire corpus, regardless of its size. Whether you're working with a small collection of 10 files or a massive dataset of 10,000 documents, CorpusAid ensures consistent and accurate preprocessing.
 
-## Key features of CorpuScript include
+## Key features of CorpusAid include
 
 1. **Customizable preprocessing parameters**: Tailor the cleaning process to your specific research needs.
 2. **Batch processing**: Apply selected parameters to all files in your corpus simultaneously.
@@ -13,7 +13,7 @@ CorpuScript is an advanced, user-friendly software tool designed specifically fo
 
 ## Purpose and design goals
 
-The primary purpose of CorpuScript is to streamline and standardize the often tedious and error-prone process of preparing textual data for corpus linguistics research. Its design goals include:
+The primary purpose of CorpusAid is to streamline and standardize the often tedious and error-prone process of preparing textual data for corpus linguistics research. Its design goals include:
 
 1. **Efficiency**: Automate repetitive tasks to save researchers valuable time and resources.
 2. **Accuracy**: Minimize human error in the preprocessing stage, ensuring more reliable research outcomes.
@@ -23,7 +23,7 @@ The primary purpose of CorpuScript is to streamline and standardize the often te
 
 ## Who is it for?
 
-CorpuScript is an invaluable tool for a wide range of users in the field of linguistics and beyond:
+CorpusAid is an invaluable tool for a wide range of users in the field of linguistics and beyond:
 
 - **Students**: Undergraduate and graduate students working on corpus-based projects or theses.
 - **Professors**: Academic staff preparing corpora for research projects or teaching materials.
@@ -35,11 +35,11 @@ CorpuScript is an invaluable tool for a wide range of users in the field of ling
 
 ## Features
 
-CorpuScript offers a robust set of features designed to streamline and enhance the corpus preprocessing workflow:
+CorpusAid offers a robust set of features designed to streamline and enhance the corpus preprocessing workflow:
 
 ### 1. Comprehensive Cleaning Parameters
 
-CorpuScript provides a rich array of text cleaning options, giving users fine-grained control over their preprocessing tasks:
+CorpusAid provides a rich array of text cleaning options, giving users fine-grained control over their preprocessing tasks:
 
 #### Text Normalization
 
@@ -84,7 +84,7 @@ CorpuScript provides a rich array of text cleaning options, giving users fine-gr
 
 ### 4. Detailed Summary Reporting
 
-After processing, CorpuScript generates a comprehensive summary report that provides invaluable insights into your corpus:
+After processing, CorpusAid generates a comprehensive summary report that provides invaluable insights into your corpus:
 
 - Word frequency distributions
 - Sentence and token counts
@@ -117,15 +117,15 @@ After processing, CorpuScript generates a comprehensive summary report that prov
 
 ## Installation
 
-CorpuScript is distributed as a standalone executable installer for Windows.
+CorpusAid is distributed as a standalone executable installer for Windows.
 
-1. Download the `corpuscript_win_setup` file from <https://github.com/jhlopesalves/CorpuScript/releases>.
+1. Download the `corpusaid_win_setup` file from <https://github.com/jhlopesalves/CorpusAid/releases>.
 2. Run the installer and follow the on-screen instructions.
-3. Once the installation is complete, you can launch CorpuScript from your desktop or Start Menu.
+3. Once the installation is complete, you can launch CorpusAid from your desktop or Start Menu.
 
 ## Usage
 
-CorpuScript is designed to be easy to use. Here's a typical workflow:
+CorpusAid is designed to be easy to use. Here's a typical workflow:
 
 1. **Load Text Files:** Open individual text files or entire directories using the "Open Files" or "Open Directory" options from the File menu.
 2. **Select Processing Parameters:** Customize your text cleaning process by selecting the desired parameters in the "Processing Parameters" dialog. Options include setting filters, choosing which characters to remove, and configuring advanced text processing modules like lemmatization and tokenization.
