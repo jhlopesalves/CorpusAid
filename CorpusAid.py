@@ -292,8 +292,64 @@ class Document:
             self.is_modified = True
             if self.history_index < len(self.history) - 1:
                 self.history = self.history[:self.history_index + 1]
-            self.history.append(new_text)
+            self.history.append(self.processed_text)  # Add processed text to history
             self.history_index += 1
+
+    def process_file(self, document):
+        if not any(self.parameters.values()):
+            return
+        document.update_processed_text(self.pipeline.process(document.processed_text))
+        
+# In PreprocessorGUI class
+    def process_files(self):
+        if not self.file_manager.documents:
+            QMessageBox.warning(self, "No Files", "Please select files to process.")
+            return
+        total_files = len(self.file_manager.documents)
+        dialog = FileDisplayDialog(total_files, self)
+        if dialog.exec():
+            number_to_display = dialog.get_number_of_files()
+            self.items_per_page = number_to_display
+        else:
+            return
+
+        self.processed_results.clear()  # Clear before processing
+        self.processing_dialog = FileLoadingDialog(self, title="Processing Files...")
+        self.processing_dialog.show()
+        self.signals.update_progress.connect(self.processing_dialog.update_progress)
+        
+        self.files_processed = 0  # Reset before processing
+        self.processed_size = 0  # Reset before processing
+        self.total_time = 0      # Reset before processing
+        self.total_size = self.file_manager.get_total_size() # Update total size
+
+        for doc in self.file_manager.documents:
+            self.processor.process_file(doc)
+            self.mark_file_as_modified(doc)
+            self.refresh_display()
+            with self.lock:  # Ensure thread safety for these shared resources
+                self.processed_results.append((doc.file_path, doc.original_text, doc.processed_text))
+                self.files_processed += 1
+                self.processed_size += len(doc.processed_text.encode('utf-8'))
+                remaining_files = len(self.file_manager.documents) - self.files_processed  # Move calculation here
+
+            self.update_progress_info(message=f"Processed {os.path.basename(doc.file_path)} | Remaining files: {remaining_files}")
+            if self.files_processed == len(self.file_manager.documents): # Check condition after processing
+                self.signals.processing_complete.emit(self.processed_results, self.warnings)
+
+        if self.files_processed == len(self.file_manager.documents):  # Check after the loop is done
+            if hasattr(self, 'processing_dialog') and self.processing_dialog.isVisible():
+                self.processing_dialog.close()
+
+            if self.errors:  # If errors, show message box after all files processed
+                error_msg = "\n".join([f"{file}: {error}" for file, error in self.errors])
+                QMessageBox.warning(self, 'Processing Completed with Errors', f"Errors occurred during processing:\n\n{error_msg}")
+            else:  # No errors, clear message (as you indicated)
+                self.status_bar.clearMessage()
+
+            self.update_status_bar()  # Ensure status bar updates
+            self.display_results()  # Update display with processed results
+            self._generate_report(processed=True)  # Generate report after display update
 
     def undo(self):
         if self.history_index > 0:
@@ -360,10 +416,20 @@ class DocumentProcessor:
 
     def update_pipeline(self):
         self.pipeline = PreprocessingPipeline()
-        # First
-        if self.parameters["regex_pattern"]:
-            self.pipeline.add_module(RegexSubstitutionModule(self.parameters["regex_pattern"]))
-        # Second
+        
+        # **1. Normalization Modules**
+        if self.parameters["normalize_unicode"]:
+            self.pipeline.add_module(UnicodeNormalizationModule())
+        if self.parameters["remove_diacritics"]:
+            self.pipeline.add_module(DiacriticRemovalModule())
+        if self.parameters["normalize_spacing"]:
+            self.pipeline.add_module(WhitespaceNormalizationModule())
+        if self.parameters["normalize_line_breaks"]:
+            self.pipeline.add_module(LineBreakNormalizationModule())
+        if self.parameters["remove_break_lines"]:
+            self.pipeline.add_module(LineBreakRemovalModule())
+        
+        # **2. Removal Modules**
         if self.parameters["chars_to_remove"]:
             self.pipeline.add_module(CharacterFilterModule(self.parameters["chars_to_remove"]))
         if self.parameters["remove_page_numbers"]:
@@ -374,23 +440,22 @@ class DocumentProcessor:
             self.pipeline.add_module(PageIndicatorRemovalModule())
         if self.parameters["remove_page_delimiters"]:
             self.pipeline.add_module(PageDelimiterRemovalModule())  
-        # Third
         if self.parameters["remove_bibliographical_references"]:
             self.pipeline.add_module(BibliographicalReferenceRemovalModule())           
-        if self.parameters["strip_html"]:
-            self.pipeline.add_module(HTMLStripperModule())
-        if self.parameters["remove_break_lines"]:
-            self.pipeline.add_module(LineBreakRemovalModule())
-        if self.parameters["normalize_line_breaks"]:
-            self.pipeline.add_module(LineBreakNormalizationModule())
+        
+        # **3. Transformation Modules**
         if self.parameters["lowercase"]:
             self.pipeline.add_module(LowercaseModule())
+        if self.parameters["strip_html"]:
+            self.pipeline.add_module(HTMLStripperModule())
+        
+        # **4. Tokenization and Filtering**
         if self.parameters["word_tokenization"]:
             self.pipeline.add_module(WordTokenizationModule())
         if self.parameters["remove_stop_words"]:
             self.pipeline.add_module(StopWordRemovalModule())
-        if self.parameters["remove_diacritics"]:
-            self.pipeline.add_module(DiacriticRemovalModule())
+        
+        # **5. Character Set Removal**
         if self.parameters["remove_greek"]:
             self.pipeline.add_module(GreekLetterRemovalModule())
         if self.parameters["remove_cyrillic"]:
@@ -398,6 +463,12 @@ class DocumentProcessor:
         if self.parameters["remove_super_sub_script"]:
             categories_to_remove = {'No', 'Sk'}
             self.pipeline.add_module(UnicodeCategoryFilterModule(categories_to_remove))
+        
+        # **6. Regex Substitution**
+        if self.parameters["regex_pattern"]:
+            self.pipeline.add_module(RegexSubstitutionModule(self.parameters["regex_pattern"]))
+        
+        # **7. Final Normalizations (if any)**
         if self.parameters["normalize_spacing"]:
             self.pipeline.add_module(WhitespaceNormalizationModule())
         if self.parameters["normalize_unicode"]:
@@ -1766,7 +1837,7 @@ class PreprocessorGUI(QMainWindow):
                         if not os.path.exists(backup_path):
                             shutil.copy2(doc.file_path, backup_path)
                         with open(doc.file_path, 'w', encoding='utf-8') as file:
-                            file.write(doc.processed_text)
+                            file.write(doc.processed_text)  # Save the processed text
                         doc.is_modified = False
                         self.mark_file_as_modified(doc)
                     except Exception as e:
