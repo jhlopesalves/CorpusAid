@@ -33,6 +33,8 @@ Nuitka/
 bin/
 CorpuScript.build/
 CorpuScript.dist/
+CorpusAid.build/
+CorpusAid.dist/
 
 # PyInstaller
 *.manifest
