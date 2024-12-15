@@ -306,7 +306,7 @@ class Document:
             self.is_modified = True
             if self.history_index < len(self.history) - 1:
                 self.history = self.history[:self.history_index + 1]
-            self.history.append(self.processed_text)  # Add processed text to history
+            self.history.append(self.processed_text)  
             self.history_index += 1
 
     def undo(self):
@@ -1379,7 +1379,7 @@ class PreprocessorGUI(QMainWindow):
     def __init__(self):
         super().__init__()
         self.silent_processing = False
-        self.version = "0.7"
+        self.version = "0.8"
         self.file_manager = FileManager()
         self.theme_manager = ThemeManager()
         self.processor = DocumentProcessor()
@@ -1428,7 +1428,7 @@ class PreprocessorGUI(QMainWindow):
         self.signals.error.connect(self.handle_error)
         self.signals.warning.connect(self.handle_warning)
         self.signals.finished.connect(self.on_all_workers_finished)
-        self.signals.processing_complete.connect(self.display_report)
+        # self.signals.processing_complete.connect(self.display_report)
         self.apply_theme()
         self.showMaximized()
         QTimer.singleShot(1000, lambda: self.check_for_updates(manual_trigger=False))
@@ -1747,7 +1747,6 @@ class PreprocessorGUI(QMainWindow):
                 self.processor.set_parameters({"chars_to_remove": chars_to_remove})
                 QMessageBox.information(self, "Sequence Added", f"'{selected_text}' has been added to sequences to remove.")
                 # Removed immediate processing to decouple registration from execution
-                
                 # Optional: Highlight the added selection without altering scroll position
                 extra_selection = QTextEdit.ExtraSelection()
                 extra_selection.format.setBackground(QColor("#FFCCCC"))  # Light red background
