@@ -30,6 +30,7 @@ CorpuScript/
 *.egg-info/
 .installed.cfg
 *.egg
+CorpusAid.onefile-build/
 
 # Nuitka output
 Nuitka/
