@@ -102,7 +102,7 @@ After processing, CorpusAid generates a comprehensive summary report that provid
 
 ## Screenshots
 
-[alt text](printscreen.png)
+![CorpusAid Interface](printscreen.png)
 
 ## Installation
 
