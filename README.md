@@ -1,37 +1,20 @@
-# What is CorpusAid?
+
+# CorpusAid
 
 CorpusAid is an advanced, user-friendly software tool designed specifically for preprocessing files in corpora compilation. This powerful application stands out for its ability to apply both personalized and traditional cleaning parameters across an entire corpus, regardless of its size. Whether you're working with a small collection of 10 files or a massive dataset of 10,000 documents, CorpusAid ensures consistent and accurate preprocessing.
 
-## Key features of CorpusAid include
 
-1. **Customizable preprocessing parameters**: Tailor the cleaning process to your specific research needs.
-2. **Batch processing**: Apply selected parameters to all files in your corpus simultaneously.
-3. **Scalability**: Efficiently handle corpora of varying sizes, from small datasets to large-scale collections.
-4. **Consistency**: Eliminate human error by automating the preprocessing steps across all documents.
-5. **Time-saving**: Dramatically reduce the time required for corpus preparation, potentially cutting months or even years off your research timeline.
-6. **User-friendly interface**: Designed to be accessible for users with varying levels of technical expertise.
 
-## Purpose and design goals
 
-The primary purpose of CorpusAid is to streamline and standardize the often tedious and error-prone process of preparing textual data for corpus linguistics research. Its design goals include:
 
-1. **Efficiency**: Automate repetitive tasks to save researchers valuable time and resources.
-2. **Accuracy**: Minimize human error in the preprocessing stage, ensuring more reliable research outcomes.
-3. **Flexibility**: Provide a wide range of preprocessing options to suit various research methodologies and corpus types.
-4. **Accessibility**: Create a tool that can be used effectively by researchers at all levels, from students to seasoned professionals.
-5. **Reproducibility**: Enable consistent application of preprocessing parameters, enhancing the reproducibility of corpus-based studies.
 
-## Who is it for?
+[![MIT License](https://img.shields.io/badge/License-MIT-green.svg)](https://choosealicense.com/licenses/mit/)
+[![GPLv3 License](https://img.shields.io/badge/License-GPL%20v3-yellow.svg)](https://opensource.org/licenses/)
+[![AGPL License](https://img.shields.io/badge/license-AGPL-blue.svg)](http://www.gnu.org/licenses/agpl-3.0)
 
-CorpusAid is an invaluable tool for a wide range of users in the field of linguistics and beyond:
 
-- **Students**: Undergraduate and graduate students working on corpus-based projects or theses.
-- **Professors**: Academic staff preparing corpora for research projects or teaching materials.
-- **Researchers**: Linguistics researchers, computational linguists, and natural language processing specialists.
-- **Language professionals**: Translators, lexicographers, and language teachers.
-- **Data scientists**: Those working with text-based data in social sciences, digital humanities, or market research.
-- **Corpus linguists**: Professionals specializing in corpus linguistics.
-- **Natural Language Processing (NLP) practitioners**: Those developing language models or conducting text analysis.
+
+
 
 ## Features
 
@@ -115,6 +98,12 @@ After processing, CorpusAid generates a comprehensive summary report that provid
 - Export preprocessed data in formats compatible with popular corpus analysis tools.
 - Integration capabilities with other NLP pipelines and workflows.
 
+
+
+## Screenshots
+
+![App Screenshot](https://photos.fife.usercontent.google.com/pw/AP1GczNyi3WgVF5u-6QUwLpbPwR4cHdynv71ARNgKXdmhaBygbSMdLVAf86ypQ=w1643-h869-s-no-gm?authuser=0)
+
 ## Installation
 
 CorpusAid is distributed as a standalone executable installer for Windows.
@@ -123,17 +112,3 @@ CorpusAid is distributed as a standalone executable installer for Windows.
 2. Run the installer and follow the on-screen instructions.
 3. Once the installation is complete, you can launch CorpusAid from your desktop or Start Menu.
 
-## Usage
-
-CorpusAid is designed to be easy to use. Here's a typical workflow:
-
-1. **Load Text Files:** Open individual text files or entire directories using the "Open Files" or "Open Directory" options from the File menu.
-2. **Select Processing Parameters:** Customize your text cleaning process by selecting the desired parameters in the "Processing Parameters" dialog. Options include setting filters, choosing which characters to remove, and configuring advanced text processing modules like lemmatization and tokenization.
-3. **Process Files:** Click the "Process Files" button to start cleaning and preprocessing your text data. You can monitor the progress in real-time through the progress bar and status updates.
-4. **View Results:** Once processing is complete, view the cleaned text in the "Processed Text" tab. You can also generate and view a detailed summary report in the "Summary Report" tab. Export the processed text or summary report as needed.
-
-## Example Use Cases
-
-- **Corpus Linguistics Research:** Clean and prepare text corpora for linguistic analysis, enabling you to focus on your research questions.
-- **Preprocessing for Other Tools:**  Prepare text data for use with other corpus analysis tools like Sketch Engine and Biber tagger.
-- **General Text Cleaning:**  Use PreTextCleaner to clean and standardize text data for various NLP tasks and applications.
