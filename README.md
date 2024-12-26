@@ -102,7 +102,7 @@ After processing, CorpusAid generates a comprehensive summary report that provid
 
 ## Screenshots
 
-![App Screenshot](https://photos.fife.usercontent.google.com/pw/AP1GczNyi3WgVF5u-6QUwLpbPwR4cHdynv71ARNgKXdmhaBygbSMdLVAf86ypQ=w1643-h869-s-no-gm?authuser=0)
+![App Screenshot](![alt text](printscreen.png))
 
 ## Installation
 
