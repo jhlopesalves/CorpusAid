@@ -98,30 +98,42 @@ CorpusAid features an intuitive GUI that guides you through the text preprocessi
    - Drag and drop files directly into the application
 
 2. **Configuring Parameters:**
-   Navigate to Settings > Processing Parameters to configure:
+   Navigate to Settings > Processing Parameters to configure preprocessing options organized in four main categories:
 
    ```
    Basic Cleanup:
-   - Remove Page Delimiters (e.g., "--- Page X ---")
-   - Remove Page Numbers (including Roman numerals)
-   - Normalize Line Breaks
-   - Join Break Lines
+   - Remove Page Delimiters: Eliminates PDF conversion artifacts like "--- Page X ---" 
+     that often appear between pages
+   - Remove Page Numbers: Detects and removes standalone numbers commonly used for 
+     page numbering (both Arabic and Roman numerals)
+   - Normalize Line Breaks: Fixes irregular line breaks and scattered characters that 
+     often result from PDF-to-text conversion
+   - Join Break Lines: Combines separated lines into continuous paragraphs while 
+     preserving intentional paragraph breaks
 
    Text Transformation:
-   - Convert to Lowercase
-   - Normalize Unicode
-   - Remove Diacritics
-   - Word Tokenization
-   - Remove Stop Words
+   - Convert to Lowercase: Standardizes all text to lowercase for consistent analysis
+   - Normalize Unicode: Standardizes different Unicode representations of the same 
+     character (e.g., combining diacritics vs. precomposed characters)
+   - Remove Diacritics: Strips accent marks from characters (e.g., 'é' becomes 'e')
+     while preserving the base letter
+   - Word Tokenization: Splits text into individual words, handling contractions and 
+     special cases appropriately
+   - Remove Stop Words: Eliminates common words (e.g., "the", "and", "in") that 
+     typically don't contribute to content analysis
 
    Character Sets:
-   - Remove Greek/Cyrillic characters
-   - Remove Superscript/Subscript
-   - Strip HTML tags
+   - Remove Greek/Cyrillic characters: Removes non-Latin alphabet characters that 
+     might appear in mathematical formulas or references
+   - Remove Superscript/Subscript: Eliminates raised or lowered characters often 
+     used in mathematical notation or footnotes
+   - Strip HTML tags: Removes any HTML markup while preserving the text content
 
    Advanced:
-   - Custom Regex Patterns
-   - Remove Bibliographical References
+   - Custom Regex Patterns: Define custom search patterns to remove specific text 
+     structures (e.g., figure captions, table headers)
+   - Remove Bibliographical References: Identifies and removes citation patterns 
+     like "(Author, Year)" or "[1]" from the text
    ```
 
 3. **Processing:**
