@@ -1,20 +1,10 @@
-
 # CorpusAid
 
 CorpusAid is an advanced, user-friendly software tool designed specifically for preprocessing files in corpora compilation. This powerful application stands out for its ability to apply both personalized and traditional cleaning parameters across an entire corpus, regardless of its size. Whether you're working with a small collection of 10 files or a massive dataset of 10,000 documents, CorpusAid ensures consistent and accurate preprocessing.
 
-
-
-
-
-
 [![MIT License](https://img.shields.io/badge/License-MIT-green.svg)](https://choosealicense.com/licenses/mit/)
 [![GPLv3 License](https://img.shields.io/badge/License-GPL%20v3-yellow.svg)](https://opensource.org/licenses/)
 [![AGPL License](https://img.shields.io/badge/license-AGPL-blue.svg)](http://www.gnu.org/licenses/agpl-3.0)
-
-
-
-
 
 ## Features
 
@@ -98,7 +88,77 @@ After processing, CorpusAid generates a comprehensive summary report that provid
 - Export preprocessed data in formats compatible with popular corpus analysis tools.
 - Integration capabilities with other NLP pipelines and workflows.
 
+## Usage Guide
 
+CorpusAid features an intuitive GUI that guides you through the text preprocessing workflow:
+
+1. **Loading Files:**
+   - Click "Open Files" or "Open Directory" to load your corpus
+   - Supports single or multiple .txt files
+   - Drag and drop files directly into the application
+
+2. **Configuring Parameters:**
+   Navigate to Settings > Processing Parameters to configure:
+
+   ```
+   Basic Cleanup:
+   - Remove Page Delimiters (e.g., "--- Page X ---")
+   - Remove Page Numbers (including Roman numerals)
+   - Normalize Line Breaks
+   - Join Break Lines
+
+   Text Transformation:
+   - Convert to Lowercase
+   - Normalize Unicode
+   - Remove Diacritics
+   - Word Tokenization
+   - Remove Stop Words
+
+   Character Sets:
+   - Remove Greek/Cyrillic characters
+   - Remove Superscript/Subscript
+   - Strip HTML tags
+
+   Advanced:
+   - Custom Regex Patterns
+   - Remove Bibliographical References
+   ```
+
+3. **Processing:**
+   - Click "Process Files" in the toolbar
+   - Monitor progress in real-time
+   - Review results in the Preview tab
+
+4. **Saving:**
+   - Review changes before saving
+   - Original files are backed up automatically
+   - Export processed text with the "Save" button
+
+## Limitations
+
+While CorpusAid is powerful for basic text preprocessing, users should be aware of its limitations:
+
+1. **Language Support:**
+   - Primary focus on English text
+   - Basic support for other Latin-script languages
+   - Limited handling of right-to-left scripts
+   - No support for language-specific lemmatization
+
+2. **Processing Constraints:**
+   - Maximum file size: 200MB per file
+   - Recommended corpus size: Up to 100,000 files
+   - Memory usage scales with file size
+
+3. **Text Analysis:**
+   - No semantic analysis capabilities
+   - No sentiment analysis
+   - No named entity recognition
+   - Basic statistical reporting only
+
+4. **File Formats:**
+   - Only processes plain text (.txt) files
+   - No direct support for PDF, DOC, or other formats
+   - HTML handling limited to tag removal
 
 ## Screenshots
 
