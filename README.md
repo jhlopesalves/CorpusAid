@@ -151,13 +151,10 @@ CorpusAid features an intuitive GUI that guides you through the text preprocessi
 While CorpusAid is powerful for basic text preprocessing, users should be aware of its limitations:
 
 1. **Language Support:**
-   - Primary focus on English text
    - Basic support for other Latin-script languages
    - Limited handling of right-to-left scripts
-   - No support for language-specific lemmatization
 
 2. **Processing Constraints:**
-   - Maximum file size: 200MB per file
    - Recommended corpus size: Up to 100,000 files
    - Memory usage scales with file size
 
