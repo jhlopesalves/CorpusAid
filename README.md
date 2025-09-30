@@ -173,9 +173,40 @@ While CorpusAid is powerful for basic text preprocessing, users should be aware 
 
 ## Installation
 
+### For End Users
+
 CorpusAid is distributed as a standalone executable installer for Windows.
 
 1. Download the `corpusaid_win_setup` file from <https://github.com/jhlopesalves/CorpusAid/releases>.
 2. Run the installer and follow the on-screen instructions.
 3. Once the installation is complete, you can launch CorpusAid from your desktop or Start Menu.
+
+### For Developers
+
+To run CorpusAid from source code:
+
+1. **Clone the repository:**
+   ```bash
+   git clone https://github.com/jhlopesalves/CorpusAid.git
+   cd CorpusAid
+   ```
+
+2. **Install Python dependencies:**
+   ```bash
+   pip install -r config/requirements.txt
+   ```
+
+3. **Download the spaCy English language model:**
+   ```bash
+   python -m spacy download en_core_web_sm
+   ```
+
+4. **Run the application:**
+   ```bash
+   python src/CorpusAid.py
+   ```
+
+**Requirements:**
+- Python 3.9 or higher
+- All dependencies listed in `config/requirements.txt`
 
