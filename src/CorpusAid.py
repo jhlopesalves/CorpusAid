@@ -1,3 +1,4 @@
+import copy
 import json
 import sys
 import logging
@@ -127,11 +128,14 @@ class CharacterFilterModule(PreprocessingModule):
 
 class LineBreakNormalizationModule(PreprocessingModule):
     def __init__(self):
-        self.scattered_chars_pattern = re.compile(r'(\b\w\b)', re.MULTILINE)
+        # Match lines that contain only a single word character (typical OCR artefacts)
+        self.single_char_line_pattern = re.compile(r'\s*\w\s*')
         self.line_break_pattern = re.compile(r'(?<!\.\s)\n(?!\s*\n)', re.MULTILINE)
 
     def process(self, text):
-        text = self.scattered_chars_pattern.sub('', text)
+        lines = text.splitlines()
+        filtered_lines = [line for line in lines if not self.single_char_line_pattern.fullmatch(line)]
+        text = '\n'.join(filtered_lines)
         text = self.line_break_pattern.sub(' ', text)
         text = re.sub(r'\s{2,}', ' ', text)
         return text.strip()
@@ -357,7 +361,7 @@ class DocumentProcessor:
     }
 
     def __init__(self):
-        self.parameters = self.default_parameters.copy()
+        self.parameters = copy.deepcopy(self.default_parameters)
         self.update_pipeline()
 
     def set_parameters(self, parameters):
@@ -370,7 +374,8 @@ class DocumentProcessor:
                 for item in parameters["chars_to_remove"]:
                     if not isinstance(item, str):
                         raise ValueError("All items in chars_to_remove must be strings")
-            self.parameters.update(parameters)
+            sanitized_parameters = copy.deepcopy(parameters)
+            self.parameters.update(sanitized_parameters)
             self.update_pipeline()
             logging.debug(f"Updated parameters: {self.parameters}")
         except re.error as e:
@@ -381,7 +386,7 @@ class DocumentProcessor:
             ErrorHandler.show_error(str(e), "Parameter Error", parent=None)
 
     def reset_parameters(self):
-        self.parameters = self.default_parameters.copy()
+        self.parameters = copy.deepcopy(self.default_parameters)
         self.update_pipeline()
 
     def update_pipeline(self):
@@ -1316,7 +1321,11 @@ class ReportWorker(QObject):
         self.files = files
         self.parameters = parameters
         self.processed = processed
-        self.processed_results = processed_results
+        self.processed_results = processed_results or []
+        self._processed_lookup = (
+            {path: processed_text for path, _, processed_text in self.processed_results}
+            if processed else {}
+        )
         self.nlp = get_spacy_model()
         self.batch_size = 100
         self.chunk_size = 100000  # Process text in chunks of 100,000 characters
@@ -1356,8 +1365,8 @@ class ReportWorker(QObject):
         batch_words = 0
         batch_size = 0
         for file_path in batch:
-            if self.processed and self.processed_results:
-                _, _, text = next((r for r in self.processed_results if r[0] == file_path), (None, None, ''))
+            if self.processed:
+                text = self._processed_lookup.get(file_path, '')
             else:
                 # Detect encoding
                 with open(file_path, 'rb') as f:
