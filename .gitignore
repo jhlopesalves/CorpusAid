@@ -1,96 +1,120 @@
-# Virtual Environment
-.venv/
-venv/
-env/
-.env/
-
-# Python cache files
+# --- Python Bytecode & Build Artifacts ---
 __pycache__/
 *.py[cod]
 *$py.class
+*.pyd
+*.so
 
-# Distribution / packaging
+# --- Virtual Environments ---
+.venv/
+venv/
+env/
+ENV/
+.env/
+.env.*
+.conda/
+*.pyenv
+.pyenv*
+pyvenv.cfg
+.python-version
+__pypackages__/
+
+# --- Packaging / Distribution ---
 build/
-develop-eggs/
 dist/
+site/
+develop-eggs/
 downloads/
-eggs/
 .eggs/
+eggs/
 lib/
 lib64/
+include/
 parts/
-sdist/
 var/
 wheels/
-CorpuScript-backup.git/
-CorpuScript/
+share/python-wheels/
+pip-wheel-metadata/
 *.egg-info/
 .installed.cfg
 *.egg
+MANIFEST
+*.manifest
 CorpusAid.onefile-build/
-
-# Nuitka output
-Nuitka/
-bin/
-CorpuScript.build/
-CorpuScript.dist/
 CorpusAid.build/
 CorpusAid.dist/
+CorpuScript.build/
+CorpuScript.dist/
+CorpuScript/
+CorpuScript-backup.git/
+Nuitka/
+bin/
 
-# PyInstaller
-*.manifest
-*.spec
+# --- Tooling & Caches ---
+.mypy_cache/
+.pytest_cache/
+.pyre/
+.pytype/
+.ruff_cache/
+.hypothesis/
+.nox/
+.tox/
+.ipynb_checkpoints/
+.coverage
+.coverage.*
+.cache/
 
-# PyInstaller build directories
-dist/
-output/
-
-# Installer files
+# --- Installer Output ---
 InstallerOutput/
+output/
 setup/
+
+# --- Logs & Runtime Artifacts ---
 logs/
-
-# Logs
+src/logs/
 *.log
+*.tmp
+*.temp
+*.bak
+*.swp
 
-# IDE specific files (VSCode, PyCharm, etc.)
+# --- Databases & Large Data ---
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+
+# --- IDE / Editor ---
 .vscode/
 .idea/
+*.code-workspace
+.history/
 
-# OS generated files
+# --- OS Generated ---
 .DS_Store
 .DS_Store?
 ._*
 .Spotlight-V100
 .Trashes
-ehthumbs.db
 Thumbs.db
+ehthumbs.db
 
-# Jupyter Notebook
-.ipynb_checkpoints
-
-# Backup files
-*.bak
-
-# Pyenv
-.python-version
-
-# mkdocs documentation
-/site
-
-# mypy
-.mypy_cache/
-
-# Additional build output folders
-lib/
-include/
-
-# Excluded executables and large files
+# --- Executables & Binaries ---
 *.exe
 *.dll
+*.msi
+*.app
+*.dmg
+*.iso
 
-#MISC
-*db
+# --- Rust Preview Module ---
+rust_preview/target/
+rust_preview/.cargo/
+rust_preview/.rustup/
+
+# --- Miscellaneous ---
+.svn/
+*.orig
+*.spec
 *.bmp
-*.co
 setup_icon.ico
