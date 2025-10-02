@@ -10,3 +10,7 @@ crate-type = ["cdylib"]
 [dependencies]
 pyo3 = { version = "0.21", features = ["extension-module"] }
 walkdir = "2"
+chardetng = "0.1"
+encoding_rs = "0.8"
+unicode-segmentation = "1.11"
+

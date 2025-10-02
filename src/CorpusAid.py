@@ -10,6 +10,7 @@ import threading
 import time
 import unicodedata
 import urllib.request
+from io import StringIO
 from threading import Lock
 
 import spacy
@@ -20,10 +21,14 @@ try:
     from corpus_preview import (
         load_preview as rust_load_preview,
         scan_directory as rust_scan_directory,
+        generate_report_summary as rust_generate_report_summary,
+        load_full_text as rust_load_full_text,
     )
 except ImportError:  # pragma: no cover - fallback when extension is unavailable
     rust_load_preview = None
     rust_scan_directory = None
+    rust_generate_report_summary = None
+    rust_load_full_text = None
 
 from PySide6.QtCore import (
     QObject,
@@ -115,14 +120,32 @@ class AppSignals(QObject):
 
 # resource_path function to get the path of the resource file
 def resource_path(relative_path):
-    """
-    Get absolute path to resource, works for development and PyInstaller builds.
-    """
+    """Get absolute path to resource, works for development and PyInstaller builds."""
     if getattr(sys, "frozen", False):  # Check if running as a PyInstaller bundle
         base_path = getattr(sys, "_MEIPASS", os.path.dirname(sys.executable))
     else:
         base_path = os.path.dirname(os.path.abspath(__file__))
     return os.path.join(base_path, relative_path)
+
+
+def load_text_with_rust_fallback(file_path):
+    """Load full file content preferring the Rust binding, with Python fallback."""
+    text = None
+    if rust_load_full_text is not None:
+        try:
+            text = rust_load_full_text(file_path)
+        except Exception as exc:
+            logging.warning("Rust full text loader failed for %s: %s. Falling back to Python.", file_path, exc)
+    if text is None:
+        try:
+            with open(file_path, "r", encoding="utf-8", errors="replace") as file:
+                text = file.read()
+        except Exception as exc:
+            logging.error("Error loading %s: %s", file_path, exc)
+            return ""
+    return text
+
+
 
 
 # Usage of resource_path updated to the new folder structure:
@@ -133,7 +156,7 @@ icon_path = resource_path("assets/my_icon.ico")
 documentation_path = resource_path("docs/documentation.html")
 
 PREVIEW_CHAR_LIMIT = 5000
-MAX_DISPLAY_FILES = 500
+MAX_DISPLAY_FILES = 5000
 PREVIEW_TRUNCATION_MARKER = (
     "\n\n[Preview truncated. Open the file to view the full contents.]"
 )
@@ -433,12 +456,9 @@ class Document:
     def load_original_text(self):
         if self._original_text is not None:
             return self._original_text
-        try:
-            with open(self.file_path, "r", encoding="utf-8", errors="replace") as file:
-                self._original_text = file.read()
-        except Exception as e:
-            logging.error(f"Error loading {self.file_path}: {e}")
-            self._original_text = ""
+
+        text = load_text_with_rust_fallback(self.file_path)
+        self._original_text = text
 
         if self._processed_text is None:
             self._processed_text = self._original_text
@@ -470,10 +490,10 @@ class Document:
         if self._original_text is not None:
             return self._truncate_text(self._original_text, limit)
 
-        if limit is None:
+        if limit is None or limit <= 0:
             return self.original_text, False
 
-        if limit > 0 and rust_load_preview is not None:
+        if rust_load_preview is not None and limit > 0:
             try:
                 preview_text, truncated = rust_load_preview(self.file_path, limit)
             except Exception as exc:  # pragma: no cover - rust loader failure
@@ -489,7 +509,6 @@ class Document:
                         self.history = [preview_text]
                         self.history_index = 0
                 return preview_text, truncated
-
         try:
             with open(self.file_path, "r", encoding="utf-8", errors="replace") as file:
                 preview = file.read(limit + 1)
@@ -511,9 +530,12 @@ class Document:
 
         return preview_text, truncated
 
+
     def get_processed_preview(self, limit):
         if self._processed_text is None:
             return self.get_original_preview(limit)
+        if limit is None or limit <= 0:
+            return self.processed_text, False
         return self._truncate_text(self._processed_text, limit)
 
     def update_processed_text(self, new_text):
@@ -1626,6 +1648,43 @@ class DirectoryLoadingWorker(QObject):
         return self._is_cancelled
 
 
+
+class DocumentLoaderWorker(QObject):
+    finished = Signal(int, str, str, str)  # token, path, original, processed
+    error = Signal(int, str, str)  # token, path, message
+
+    def __init__(self, file_path, processed_text, token):
+        super().__init__()
+        self.file_path = file_path
+        self.processed_text = processed_text
+        self.token = token
+        self._cancelled = False
+
+    def cancel(self):
+        self._cancelled = True
+
+    @Slot()
+    def run(self):
+        if self._cancelled:
+            return
+        try:
+            original_text = load_text_with_rust_fallback(self.file_path)
+            if self._cancelled:
+                return
+            processed_text = (
+                self.processed_text if self.processed_text is not None else original_text
+            )
+            self.finished.emit(
+                self.token,
+                self.file_path,
+                original_text,
+                processed_text,
+            )
+        except Exception as exc:
+            if not self._cancelled:
+                self.error.emit(self.token, self.file_path, str(exc))
+
+
 class ReportWorker(QObject):
     progress = Signal(int)
     finished = Signal(dict)
@@ -1633,48 +1692,89 @@ class ReportWorker(QObject):
     def __init__(self, files, parameters, processed=False, processed_results=None):
         super().__init__()
         self.files = files
-        self.parameters = parameters
+        self.parameters = parameters or {}
         self.processed = processed
         self.processed_results = processed_results or []
-        self._processed_lookup = (
-            {path: processed_text for path, _, processed_text in self.processed_results}
-            if processed
-            else {}
-        )
-        self.nlp = get_spacy_model()
         self.batch_size = 100
         self.chunk_size = 100000  # Process text in chunks of 100,000 characters
+        self.use_rust = rust_generate_report_summary is not None
+        self._processed_lookup = (
+            {path: processed_text for path, _, processed_text in self.processed_results}
+            if self.processed
+            else {}
+        )
+        self.nlp = None if self.use_rust else get_spacy_model()
 
     def run(self):
         try:
-            total_words = 0
-            total_size = 0
-            file_count = len(self.files)
+            if self.use_rust:
+                self._run_with_rust()
+            else:
+                self._run_with_python()
+        except Exception as e:
+            logging.error(f"Error in report generation: {str(e)}")
 
-            for i in range(0, file_count, self.batch_size):
-                batch = self.files[i : i + self.batch_size]
-                batch_words, batch_size = self.process_batch(batch)
+    def _run_with_rust(self):
+        if rust_generate_report_summary is None:
+            raise RuntimeError("Rust report summary binding unavailable")
 
-                total_words += batch_words
-                total_size += batch_size
+        processed_lookup = self._processed_lookup if self.processed else {}
+        lookup_arg = processed_lookup or None
 
+        def progress_callback(value):
+            try:
+                self.progress.emit(int(value))
+            except Exception:
+                logging.exception("Failed to emit report progress update from Rust")
+
+        report_data = rust_generate_report_summary(
+            self.files,
+            self.processed,
+            bool(self.parameters.get("word_tokenization", False)),
+            processed_lookup=lookup_arg,
+            progress_callback=progress_callback,
+        )
+
+        if report_data is None:
+            report_data = {}
+        elif not isinstance(report_data, dict):
+            report_data = dict(report_data)
+
+        self.progress.emit(100)
+        self.finished.emit(report_data)
+
+    def _run_with_python(self):
+        total_words = 0
+        total_size = 0
+        file_count = len(self.files)
+
+        if file_count == 0:
+            self.progress.emit(100)
+
+        for i in range(0, file_count, self.batch_size):
+            batch = self.files[i : i + self.batch_size]
+            batch_words, batch_size = self.process_batch(batch)
+
+            total_words += batch_words
+            total_size += batch_size
+
+            if file_count:
                 progress = min(100, int((i + len(batch)) / file_count * 100))
                 self.progress.emit(progress)
 
-            avg_words = total_words / file_count if file_count else 0
-            avg_size = total_size / file_count if file_count else 0
+        avg_words = total_words / file_count if file_count else 0
+        avg_size = total_size / file_count if file_count else 0
 
-            final_report = {
-                "total_files": file_count,
-                "total_size": total_size / (1024 * 1024),
-                "avg_size": avg_size / (1024 * 1024),
-                "total_words": total_words,
-                "avg_words": avg_words,
-            }
+        final_report = {
+            "total_files": file_count,
+            "total_size": total_size / (1024 * 1024),
+            "avg_size": avg_size / (1024 * 1024),
+            "total_words": total_words,
+            "avg_words": avg_words,
+        }
 
-            self.finished.emit(final_report)
-        except Exception as e:
-            logging.error(f"Error in report generation: {str(e)}")
+        self.progress.emit(100)
+        self.finished.emit(final_report)
 
     def process_batch(self, batch):
         batch_words = 0
@@ -1683,7 +1783,6 @@ class ReportWorker(QObject):
             if self.processed:
                 text = self._processed_lookup.get(file_path, "")
             else:
-                # Detect encoding
                 with open(file_path, "rb") as f:
                     raw_data = f.read()
                     result = from_bytes(raw_data)
@@ -1708,6 +1807,7 @@ class ReportWorker(QObject):
                     batch_words += len([token for token in doc if not token.is_space])
 
         return batch_words, batch_size
+
 
 
 class PreprocessorGUI(QMainWindow):
@@ -1742,10 +1842,11 @@ class PreprocessorGUI(QMainWindow):
         self.lock = Lock()
         self.previous_search_term = ""
         self.previous_text_edit = None
-        self.corpus_preview_timer = None
-        self.corpus_preview_docs = []
-        self.corpus_preview_index = 0
-        self.corpus_preview_active = False
+        self.document_loader_thread = None
+        self.document_loader_worker = None
+        self.document_request_token = 0
+        self._active_loading_token = None
+        self._busy_cursor_depth = 0
         self.init_ui()
 
     def init_ui(self):
@@ -1778,6 +1879,62 @@ class PreprocessorGUI(QMainWindow):
         self.showMaximized()
         QTimer.singleShot(1000, lambda: self.check_for_updates(manual_trigger=False))
 
+    def _set_busy_cursor(self, enable):
+        if enable:
+            self._busy_cursor_depth += 1
+            if self._busy_cursor_depth == 1:
+                QApplication.setOverrideCursor(Qt.WaitCursor)
+        else:
+            if self._busy_cursor_depth > 0:
+                self._busy_cursor_depth -= 1
+                if self._busy_cursor_depth == 0:
+                    QApplication.restoreOverrideCursor()
+
+    def _force_hide_loading_indicator(self):
+        if self.preview_loading_widget.isVisible():
+            self.preview_loading_widget.hide()
+        self.preview_loading_label.clear()
+        self.preview_loading_bar.setRange(0, 1)
+        self.preview_loading_bar.setValue(0)
+        self.text_tabs.setEnabled(True)
+        if self._busy_cursor_depth > 0:
+            QApplication.restoreOverrideCursor()
+            self._busy_cursor_depth = 0
+        self._active_loading_token = None
+
+    def _show_loading_indicator(self, source, token, message, determinate=False):
+        self._force_hide_loading_indicator()
+        self._active_loading_token = (source, token)
+        self.preview_loading_label.setText(message)
+        if determinate:
+            self.preview_loading_bar.setRange(0, 100)
+            self.preview_loading_bar.setValue(0)
+        else:
+            self.preview_loading_bar.setRange(0, 0)
+        self.preview_loading_widget.show()
+        self.text_tabs.setEnabled(False)
+        self._set_busy_cursor(True)
+
+    def _update_loading_indicator(self, source, token, value=None, message=None, determinate=None):
+        if self._active_loading_token != (source, token):
+            return
+        if determinate is not None:
+            if determinate:
+                if self.preview_loading_bar.maximum() == 0:
+                    self.preview_loading_bar.setRange(0, 100)
+                    self.preview_loading_bar.setValue(0)
+            else:
+                self.preview_loading_bar.setRange(0, 0)
+        if message is not None:
+            self.preview_loading_label.setText(message)
+        if value is not None and self.preview_loading_bar.maximum() != 0:
+            self.preview_loading_bar.setValue(max(0, min(100, value)))
+
+    def _hide_loading_indicator(self, source, token):
+        if self._active_loading_token != (source, token):
+            return
+        self._set_busy_cursor(False)
+        self._force_hide_loading_indicator()
     def resource_path(self, relative_path):
         """Get absolute path to resource, works for dev and for PyInstaller"""
         try:
@@ -1881,20 +2038,6 @@ class PreprocessorGUI(QMainWindow):
         self.toolbar.addAction(self.open_files_action)
         self.toolbar.addAction(self.open_directory_action)
         self.toolbar.addAction(self.save_action)
-        self.toolbar.addSeparator()
-        process_button = QPushButton("Process Files")
-        process_button.setIcon(QIcon.fromTheme("system-run"))
-        process_button.setToolTip("Process the selected files with current parameters")
-        process_button.clicked.connect(self.process_files)
-        self.toolbar.addWidget(process_button)
-
-        corpus_button = QPushButton("Show Corpus Preview")
-        corpus_button.setIcon(QIcon.fromTheme("view-list"))
-        corpus_button.setToolTip(
-            "Render the entire corpus preview without selecting files individually"
-        )
-        corpus_button.clicked.connect(lambda: self.show_corpus_preview())
-        self.toolbar.addWidget(corpus_button)
 
     def create_action(self, text, icon, shortcut, tooltip, callback):
         action = QAction(QIcon.fromTheme(icon, QIcon()), text, self)
@@ -1947,6 +2090,18 @@ class PreprocessorGUI(QMainWindow):
         text_layout = QVBoxLayout(text_display)
         text_display.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
+        self.preview_loading_widget = QWidget()
+        preview_loading_layout = QHBoxLayout(self.preview_loading_widget)
+        preview_loading_layout.setContentsMargins(0, 0, 0, 0)
+        preview_loading_layout.setSpacing(8)
+        self.preview_loading_label = QLabel()
+        self.preview_loading_label.setObjectName("previewLoadingLabel")
+        self.preview_loading_bar = QProgressBar()
+        self.preview_loading_bar.setRange(0, 0)
+        preview_loading_layout.addWidget(self.preview_loading_label)
+        preview_loading_layout.addWidget(self.preview_loading_bar, 1)
+        self.preview_loading_widget.hide()
+
         self.text_tabs = QTabWidget()
         self.original_text = QPlainTextEdit()
         self.original_text.setReadOnly(True)
@@ -1963,6 +2118,7 @@ class PreprocessorGUI(QMainWindow):
         self.text_tabs.addTab(self.processed_text, "Processed Text")
         self.text_tabs.currentChanged.connect(self.on_tab_changed)
 
+        text_layout.addWidget(self.preview_loading_widget)
         text_layout.addWidget(self.text_tabs)
 
         # Search Layout
@@ -2369,91 +2525,16 @@ class PreprocessorGUI(QMainWindow):
         self._generate_report(processed=True)
 
     def stop_corpus_preview(self):
-        if self.corpus_preview_timer:
-            self.corpus_preview_timer.stop()
-            self.corpus_preview_timer.deleteLater()
-            self.corpus_preview_timer = None
-        self.corpus_preview_active = False
-
-    def show_corpus_preview(self):
-        self.start_corpus_preview(reset_selection=True)
-
-    def start_corpus_preview(self, docs=None, reset_selection=False):
-        if reset_selection:
-            self.file_list.blockSignals(True)
-            self.file_list.clearSelection()
-            self.file_list.blockSignals(False)
-
-        self.stop_corpus_preview()
-
-        if docs is None:
-            docs = self.file_manager.documents
-
-        if not docs:
-            self.original_text.clear()
-            self.processed_text.clear()
-            self.current_file = None
-            return
-
-        self.corpus_preview_docs = docs
-        self.corpus_preview_index = 0
-        self.corpus_preview_active = True
-
-        self.original_text.clear()
-        self.processed_text.clear()
-        self.current_file = None
-        total = len(self.corpus_preview_docs)
-        self.status_bar.showMessage(
-            f"Building corpus preview... (0/{total})", 3000
-        )
-
-        self.corpus_preview_timer = QTimer(self)
-        self.corpus_preview_timer.setInterval(0)
-        self.corpus_preview_timer.timeout.connect(self._append_corpus_preview_chunk)
-        self.corpus_preview_timer.start()
-
-    def _append_corpus_preview_chunk(self):
-        if not self.corpus_preview_active or not self.corpus_preview_docs:
-            self.stop_corpus_preview()
-            return
-
-        start = self.corpus_preview_index
-        end = min(start + PREVIEW_BATCH_SIZE, len(self.corpus_preview_docs))
-        if start >= end:
-            self.stop_corpus_preview()
-            self.status_bar.showMessage("Corpus preview ready", 5000)
-            return
-
-        for doc in self.corpus_preview_docs[start:end]:
-            original_preview = self._prepare_preview_text(
-                doc.get_original_preview(PREVIEW_CHAR_LIMIT)
-            )
-            processed_preview = self._prepare_preview_text(
-                doc.get_processed_preview(PREVIEW_CHAR_LIMIT)
-            )
-            self.original_text.appendPlainText(
-                f"File: {doc.file_path}\n\n{original_preview}\n\n"
-            )
-            self.processed_text.appendPlainText(
-                f"File: {doc.file_path}\n\n{processed_preview}\n\n"
-            )
-
-        self.corpus_preview_index = end
-        total = len(self.corpus_preview_docs)
-        self.status_bar.showMessage(
-            f"Building corpus preview... ({end}/{total})",
-            2000,
-        )
-
-        if end >= total:
-            self.stop_corpus_preview()
-            self.status_bar.showMessage("Corpus preview ready", 5000)
+        """Legacy hook kept for compatibility; no-op in single-file view mode."""
+        pass
 
     def display_results(self):
-        self.start_corpus_preview(reset_selection=True)
+        self.file_list.clearSelection()
+        self.refresh_display()
+
         if self.warnings:
             warning_msg = "\n".join(
-                [f"{file}: {warning}" for file, warning in self.warnings]
+                f"{file}: {warning}" for file, warning in self.warnings
             )
             QMessageBox.warning(
                 self,
@@ -2461,13 +2542,8 @@ class PreprocessorGUI(QMainWindow):
                 f"Warnings during processing:\n\n{warning_msg}",
             )
 
-    def _prepare_preview_text(self, text_tuple):
-        text, truncated = text_tuple
-        if not text:
-            return ""
-        if truncated:
-            return text.rstrip() + PREVIEW_TRUNCATION_MARKER
-        return text
+
+
 
     def open_parameters_dialog(self):
         dialog = ParametersDialog(self.processor.get_parameters(), self)
@@ -2749,26 +2825,135 @@ class PreprocessorGUI(QMainWindow):
                 break
 
     def refresh_display(self):
+        self.stop_corpus_preview()
+        self._cancel_document_loader()
+
         selected_items = self.file_list.selectedItems()
-        if selected_items:
-            selected_file = selected_items[0].text().strip("* ")
-            doc = self.file_manager.get_document_by_path(selected_file)
+
+        if len(selected_items) == 1:
+            selected_file_path = selected_items[0].text().strip("* ")
+            doc = self.file_manager.get_document_by_path(selected_file_path)
             if doc:
-                self.stop_corpus_preview()
-                self.original_text.setPlainText(doc.original_text)
-                self.processed_text.setPlainText(doc.processed_text)
                 self.current_file = doc.file_path
-                self.status_bar.showMessage(
-                    f"Showing {os.path.basename(doc.file_path)}", 5000
-                )
-        elif self.file_manager.documents:
-            if not self.corpus_preview_active:
-                self.start_corpus_preview()
-        else:
-            self.stop_corpus_preview()
-            self.original_text.clear()
-            self.processed_text.clear()
+                if doc._original_text is not None:
+                    original_text = doc._original_text
+                    processed_text = (
+                        doc._processed_text if doc._processed_text is not None else original_text
+                    )
+                    self.original_text.setPlainText(original_text)
+                    self.processed_text.setPlainText(processed_text)
+                    self.status_bar.showMessage(
+                        f"Displaying: {os.path.basename(doc.file_path)}",
+                        5000,
+                    )
+                else:
+                    self.original_text.clear()
+                    self.processed_text.clear()
+                    self._load_document_async(doc)
+
+
+        elif len(selected_items) > 1:
             self.current_file = None
+            message = (
+                f"{len(selected_items)} files selected.\n\n"
+                "Please select a single file to view its content."
+            )
+            self.original_text.setPlainText(message)
+            self.processed_text.setPlainText(message)
+            self.status_bar.showMessage(
+                f"{len(selected_items)} files selected.",
+                5000,
+            )
+        else:
+            self.current_file = None
+            if self.file_manager.documents:
+                message = "Please select a file from the list to view its content."
+                self.original_text.setPlainText(message)
+                self.processed_text.setPlainText(message)
+            else:
+                self.original_text.clear()
+                self.processed_text.clear()
+            self.status_bar.clearMessage()
+
+
+    def _next_document_token(self):
+        self.document_request_token += 1
+        return self.document_request_token
+
+    def _load_document_async(self, doc):
+        self._cancel_document_loader()
+        token = self._next_document_token()
+        self.document_loader_worker = DocumentLoaderWorker(doc.file_path, doc._processed_text, token)
+        self.document_loader_thread = QThread()
+        self.document_loader_worker.moveToThread(self.document_loader_thread)
+        self.document_loader_thread.started.connect(self.document_loader_worker.run)
+        self.document_loader_worker.finished.connect(self._handle_document_loaded)
+        self.document_loader_worker.error.connect(self._handle_document_error)
+        self.document_loader_worker.finished.connect(lambda *_: self._cleanup_document_loader())
+        self.document_loader_worker.error.connect(lambda *_: self._cleanup_document_loader())
+        self.document_loader_thread.start()
+        message = f"Loading {os.path.basename(doc.file_path)}..."
+        self._show_loading_indicator("document", token, message, determinate=False)
+        self.status_bar.showMessage(message)
+
+    def _handle_document_loaded(self, token, path, original_text, processed_text):
+        if token != self.document_request_token:
+            return
+        self._hide_loading_indicator("document", token)
+        doc = self.file_manager.get_document_by_path(path)
+        if doc:
+            doc._original_text = original_text
+            if doc._processed_text is None:
+                doc._processed_text = processed_text
+            if not doc.history:
+                doc.history = [doc._processed_text]
+                doc.history_index = 0
+            display_processed = doc._processed_text if doc._processed_text is not None else processed_text
+        else:
+            display_processed = processed_text
+        self.original_text.setPlainText(original_text)
+        self.processed_text.setPlainText(display_processed)
+        self.status_bar.showMessage(f"Displaying: {os.path.basename(path)}", 5000)
+
+    def _handle_document_error(self, token, path, message):
+        if token != self.document_request_token:
+            return
+        self._hide_loading_indicator("document", token)
+        logging.error("Failed to load %s: %s", path, message)
+        self.original_text.clear()
+        self.processed_text.clear()
+        self.status_bar.showMessage(f"Failed to load {os.path.basename(path)}", 5000)
+        QMessageBox.warning(
+            self,
+            "Load Error",
+            f"Unable to load {os.path.basename(path)}:\\n{message}",
+        )
+
+
+    def _cleanup_document_loader(self):
+        if self.document_loader_worker:
+            self.document_loader_worker.deleteLater()
+            self.document_loader_worker = None
+        if self.document_loader_thread:
+            if self.document_loader_thread.isRunning():
+                self.document_loader_thread.quit()
+                self.document_loader_thread.wait()
+            self.document_loader_thread.deleteLater()
+            self.document_loader_thread = None
+
+    def _cancel_document_loader(self):
+        active = False
+        if self.document_loader_worker:
+            self.document_loader_worker.cancel()
+            active = True
+        if self.document_loader_thread and self.document_loader_thread.isRunning():
+            self.document_loader_thread.quit()
+            self.document_loader_thread.wait()
+            active = True
+        self._cleanup_document_loader()
+        if active and self._active_loading_token and self._active_loading_token[0] == "document":
+            self._force_hide_loading_indicator()
+            self.document_request_token += 1
 
     def confirm_start_new_cleaning(self):
         reply = QMessageBox.question(
@@ -2784,6 +2969,8 @@ class PreprocessorGUI(QMainWindow):
     def start_new_cleaning(self):
         self.file_manager.clear_files()
         self.file_list.clear()
+        self.stop_corpus_preview()
+        self._cancel_document_loader()
         self.original_text.clear()
         self.processed_text.clear()
         self.current_file = None
@@ -2820,12 +3007,13 @@ class PreprocessorGUI(QMainWindow):
 
     def display_original_texts(self):
         if self.file_manager.documents:
-            self.start_corpus_preview(reset_selection=True)
+            self.file_list.clearSelection()
+            self.refresh_display()
         else:
-            self.stop_corpus_preview()
             self.original_text.clear()
             self.processed_text.clear()
             self.current_file = None
+            self.status_bar.clearMessage()
 
     def _generate_report(self, processed=False):
         if self.report_worker is not None:
@@ -2979,6 +3167,7 @@ class PreprocessorGUI(QMainWindow):
 
     def closeEvent(self, event):
         self.stop_corpus_preview()
+        self._cancel_document_loader()
         self.thread_pool.clear()
         self.thread_pool.waitForDone()
         if hasattr(self, "loading_thread") and self.loading_thread.isRunning():
