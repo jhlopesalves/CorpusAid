@@ -1,212 +1,70 @@
 # CorpusAid
 
-CorpusAid is an advanced, user-friendly software tool designed specifically for preprocessing files in corpora compilation. This powerful application stands out for its ability to apply both personalized and traditional cleaning parameters across an entire corpus, regardless of its size. Whether you're working with a small collection of 10 files or a massive dataset of 10,000 documents, CorpusAid ensures consistent and accurate preprocessing.
-
 [![MIT License](https://img.shields.io/badge/License-MIT-green.svg)](https://choosealicense.com/licenses/mit/)
 
-## Features
+CorpusAid is a desktop corpus preprocessing workbench built with PySide6. It lets researchers load thousands of plain-text documents, configure a reproducible cleaning pipeline, preview results, and export the processed corpus. The application ships with spaCy-powered linguistic helpers and optional Rust bindings that keep previews responsive even on large datasets.
 
-CorpusAid offers a robust set of features designed to streamline and enhance the corpus preprocessing workflow:
+## Highlights
+- Configurable pipeline that toggles normalization, page artifact removal, HTML stripping, tokenization, stop-word filtering, regex substitutions, and more; parameters are validated before execution to avoid corrupting data.
+- Fast corpus ingestion via drag-and-drop or recursive folder scans. An optional `rust_preview` extension accelerates directory walks and preview loading with a transparent Python fallback.
+- Interactive preview and editing workspace with streamed snippets (up to 5,000 characters), undo/redo history, and responsive UI powered by background workers.
+- Batch processing with safety nets: thread-pooled workers, progress feedback, warning surfacing, and automatic `.bak` backups before overwriting source files.
+- Reports and monitoring through a summary dashboard (file counts, sizes, token statistics, timings) plus structured logging in `src/logs/CorpusAid.log`.
+- Research-friendly UX extras including dark/light themes, an advanced regex wizard, inline documentation (`docs/documentation.html`), and a built-in update checker.
 
-### 1. Comprehensive Cleaning Parameters
+![CorpusAid interface](src/assets/printscreen.png)
 
-CorpusAid provides a rich array of text cleaning options, giving users fine-grained control over their preprocessing tasks:
+## Repository Layout
+- `src/CorpusAid.py` - PySide6 application entry point and preprocessing pipeline.
+- `config/requirements.txt` - Python dependencies for running from source.
+- `rust_preview/` - Optional Rust crate exposing fast preview helpers via `maturin`.
+- `src/assets/` - Icons, fonts, and screenshots referenced by the UI.
+- `src/docs/` - In-app documentation rendered inside the help view.
 
-#### Text Normalization
+## Prerequisites
+- Python 3.9 or newer.
+- pip (virtual environments recommended).
+- spaCy English model `en_core_web_sm`.
+- Optional: Rust toolchain and `maturin` to build the native preview module.
+- PySide6 wheels include Qt WebEngine; ensure your platform supports it for the preview pane.
 
-- **Lowercase Conversion:** Standardizes text by converting all characters to lowercase, ensuring consistency in text analysis.
-- **Whitespace Normalization:** Ensures uniform spacing throughout the text by removing redundant spaces, tabs, and other whitespace characters.
-- **Line Break Removal:** Merges multiple lines to create continuous text, useful for certain types of analysis that require unbroken text streams.
-- **Unicode Normalization:** Converts text into a standard Unicode format (e.g., NFC, NFD, NFKC, NFKD), ensuring consistency in character representation across different languages and scripts.
+## Running from Source
+```bash
+git clone https://github.com/jhlopesalves/CorpusAid.git
+cd CorpusAid
+python -m venv .venv
+# Windows PowerShell
+. .venv/Scripts/Activate.ps1
+pip install -r config/requirements.txt
+python -m spacy download en_core_web_sm
+python src/CorpusAid.py
+```
 
-#### Character and Symbol Management
+When packaging for end users you can continue using the existing installer or tools such as `pyinstaller`.
 
-- **Punctuation Removal:** Strips away punctuation marks to focus on core textual content.
-- **Number Removal:** Eliminates numerical digits when they're not relevant to the analysis.
-- **Special Characters Removal:** Removes symbols and characters that may interfere with text processing algorithms.
-- **Diacritic Removal:** Strips accents and diacritical marks from characters, useful for certain types of cross-linguistic analysis.
-- **Greek and Cyrillic Character Removal:** Selectively filters out specific scripts as required by the research parameters.
+## Optional Native Preview Module
+The Rust helper keeps directory scans and previews smooth on very large corpora. CorpusAid automatically falls back to the Python implementation if the module is absent.
 
-#### Content Extraction and Cleaning
+```bash
+pip install maturin
+cd rust_preview
+maturin develop --release
+```
 
-- **HTML Tag Stripping:** Removes HTML tags to extract plain text content from web-scraped or marked-up documents.
-- **Bibliographical Reference Removal:** Automatically identifies and removes in-text bibliographical references (e.g., citations like `(Smith, 2020)`), cleaning up the text for analysis.
-- **Custom Regular Expression Filtering:** Allows users to define and apply custom patterns for advanced text filtering and extraction.
+Restart the application after building so it can detect the compiled extension.
 
-#### Linguistic Processing
+## Typical Workflow
+1. **Load documents** - Use `File -> Open` or drag-and-drop files or folders. Folder scans surface progress and can be cancelled at any time.
+2. **Configure preprocessing** - Open the parameters dialog to toggle normalization, artifact removal, tokenization, stop-word filtering, and custom regex patterns. The advanced builder helps compose complex expressions safely.
+3. **Preview and iterate** - Inspect streamed previews (capped at 5,000 characters), switch between original and processed text, and undo or redo manual edits when needed.
+4. **Run the batch** - Processing runs in parallel, keeps the UI responsive, and surfaces warnings for files that need attention.
+5. **Review the report** - The summary tab consolidates size, token, and timing metrics alongside the active configuration.
+6. **Save results** - Overwrite source files only after confirmation. CorpusAid creates `.bak` backups before writing processed text.
 
-- **Lemmatization:** Reduces words to their base or dictionary form (lemmas), aiding in linguistic analysis by grouping together different forms of a word.
-- **Sentence Tokenization:** Splits text into individual sentences, fundamental for tasks like sentiment analysis and syntactic parsing.
-- **Word Tokenization:** Divides text into individual words or tokens, essential for word-level analysis and processing.
-- **Stop Word Removal:** Excludes common, non-informative words (e.g., "the", "and") to focus on meaningful content.
+## Logging and Support
+- Runtime logs are stored at `src/logs/CorpusAid.log`; include this file when reporting issues.
+- Documentation is bundled in `docs/documentation.html` and available from the help menu.
+- Issues and feature requests are welcome via GitHub.
 
-### 2. Batch Processing
-
-- Process entire directories of text files simultaneously, regardless of the number of files.
-- Apply consistent preprocessing across large corpora, ensuring uniformity in your dataset.
-- Dramatically reduce processing time compared to manual or file-by-file approaches.
-
-### 3. Intuitive Graphical User Interface (GUI)
-
-- User-friendly interface designed for researchers of all technical levels.
-- Easy-to-navigate controls for selecting and applying preprocessing parameters.
-- Real-time preview feature to see the effects of selected parameters on sample text.
-- Progress indicators for tracking batch processing operations.
-
-### 4. Detailed Summary Reporting
-
-After processing, CorpusAid generates a comprehensive summary report that provides invaluable insights into your corpus:
-
-- Word frequency distributions
-- Sentence and token counts
-- Type-token ratio analysis
-- Corpus size statistics (pre and post-processing)
-- Applied preprocessing parameters summary
-- Processing time and performance metrics
-
-### 5. Customization and Flexibility
-
-- Save and load preprocessing profiles for consistent application across projects.
-- Adjustable parameters to fine-tune preprocessing for specific research needs.
-- Support for multiple input and output file formats (e.g., .txt, .csv, .json).
-
-### 6. Data Integrity and Security
-
-- Non-destructive processing: always keeps original files intact.
-- Option to create backups automatically before processing.
-- Detailed logging for audit trails and reproducibility.
-
-### 7. Scalability
-
-- Efficiently handles corpora of all sizes, from small datasets to large-scale collections.
-- Optimized for performance on both personal computers and high-performance computing environments.
-
-### 8. Interoperability
-
-- Export preprocessed data in formats compatible with popular corpus analysis tools.
-- Integration capabilities with other NLP pipelines and workflows.
-
-## Usage Guide
-
-CorpusAid features an intuitive GUI that guides you through the text preprocessing workflow:
-
-1. **Loading Files:**
-   - Click "Open Files" or "Open Directory" to load your corpus
-   - Supports single or multiple .txt files
-   - Drag and drop files directly into the application
-
-2. **Configuring Parameters:**
-   Navigate to Settings > Processing Parameters to configure preprocessing options organized in four main categories:
-
-   ```
-   Basic Cleanup:
-   - Remove Page Delimiters: Eliminates PDF conversion artifacts like "--- Page X ---" 
-     that often appear between pages
-   - Remove Page Numbers: Detects and removes standalone numbers commonly used for 
-     page numbering (both Arabic and Roman numerals)
-   - Normalize Line Breaks: Fixes irregular line breaks and scattered characters that 
-     often result from PDF-to-text conversion
-   - Join Break Lines: Combines separated lines into continuous paragraphs while 
-     preserving intentional paragraph breaks
-
-   Text Transformation:
-   - Convert to Lowercase: Standardizes all text to lowercase for consistent analysis
-   - Normalize Unicode: Standardizes different Unicode representations of the same 
-     character (e.g., combining diacritics vs. precomposed characters)
-   - Remove Diacritics: Strips accent marks from characters (e.g., 'é' becomes 'e')
-     while preserving the base letter
-   - Word Tokenization: Splits text into individual words, handling contractions and 
-     special cases appropriately
-   - Remove Stop Words: Eliminates common words (e.g., "the", "and", "in") that 
-     typically don't contribute to content analysis
-
-   Character Sets:
-   - Remove Greek/Cyrillic characters: Removes non-Latin alphabet characters that 
-     might appear in mathematical formulas or references
-   - Remove Superscript/Subscript: Eliminates raised or lowered characters often 
-     used in mathematical notation or footnotes
-   - Strip HTML tags: Removes any HTML markup while preserving the text content
-
-   Advanced:
-   - Custom Regex Patterns: Define custom search patterns to remove specific text 
-     structures (e.g., figure captions, table headers)
-   - Remove Bibliographical References: Identifies and removes citation patterns 
-     like "(Author, Year)" or "[1]" from the text
-   ```
-
-3. **Processing:**
-   - Click "Process Files" in the toolbar
-   - Monitor progress in real-time
-   - Review results in the Preview tab
-
-4. **Saving:**
-   - Review changes before saving
-   - Original files are backed up automatically
-   - Export processed text with the "Save" button
-
-## Limitations
-
-While CorpusAid is powerful for basic text preprocessing, users should be aware of its limitations:
-
-1. **Language Support:**
-   - Basic support for other Latin-script languages
-   - Limited handling of right-to-left scripts
-
-2. **Processing Constraints:**
-   - Recommended corpus size: Up to 100,000 files
-   - Memory usage scales with file size
-
-3. **Text Analysis:**
-   - No semantic analysis capabilities
-   - No sentiment analysis
-   - No named entity recognition
-   - Basic statistical reporting only
-
-4. **File Formats:**
-   - Only processes plain text (.txt) files
-   - No direct support for PDF, DOC, or other formats
-   - HTML handling limited to tag removal
-
-## Screenshots
-
-![CorpusAid Interface](src/assets/printscreen.png)
-
-## Installation
-
-### For End Users
-
-CorpusAid is distributed as a standalone executable installer for Windows.
-
-1. Download the `corpusaid_win_setup` file from <https://github.com/jhlopesalves/CorpusAid/releases>.
-2. Run the installer and follow the on-screen instructions.
-3. Once the installation is complete, you can launch CorpusAid from your desktop or Start Menu.
-
-### For Developers
-
-To run CorpusAid from source code:
-
-1. **Clone the repository:**
-   ```bash
-   git clone https://github.com/jhlopesalves/CorpusAid.git
-   cd CorpusAid
-   ```
-
-2. **Install Python dependencies:**
-   ```bash
-   pip install -r config/requirements.txt
-   ```
-
-3. **Download the spaCy English language model:**
-   ```bash
-   python -m spacy download en_core_web_sm
-   ```
-
-4. **Run the application:**
-   ```bash
-   python src/CorpusAid.py
-   ```
-
-**Requirements:**
-- Python 3.9 or higher
-- All dependencies listed in `config/requirements.txt`
-
+## License
+[MIT](https://choosealicense.com/licenses/mit/)
